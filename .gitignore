@@ -1,0 +1,26 @@
+# Python & Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log
+streamlit*.log
+train-rat*.log
+
+# Media & Uploaded Files
+uploads/*
+!uploads/.gitkeep
+
+# Datasets
+rat-dataset/
+
+# IDEs & System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

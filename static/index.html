@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RATTUS AI — Hyperlocal Exposure-Risk Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navbar -->
+        <header class="navbar">
+            <div class="brand">
+                <div class="logo-icon">🐀</div>
+                <div class="brand-text">
+                    <h1>RATTUS AI</h1>
+                    <span>Leptospirosis Exposure-Risk Intelligence Engine</span>
+                </div>
+            </div>
+            <div class="header-status">
+                <div class="status-badge" id="engineStatusBadge">
+                    <span class="pulse-dot"></span>
+                    <span id="engineStatusText">AI Inference Active</span>
+                </div>
+                <div class="model-badge" id="activeModelBadge">
+                    Model: <strong>best.pt (Rodent YOLOv8)</strong>
+                </div>
+            </div>
+        </header>
+
+        <!-- KPI Metrics Strip -->
+        <section class="kpi-grid">
+            <!-- Exposure Risk -->
+            <div class="kpi-card risk-card" id="kpiRiskCard">
+                <div class="kpi-header">
+                    <span class="kpi-label">Exposure Risk Score</span>
+                    <span class="risk-badge badge-low" id="riskLevelBadge">LOW</span>
+                </div>
+                <div class="kpi-value-row">
+                    <div class="kpi-score" id="riskScoreVal">18</div>
+                    <span class="kpi-max">/100</span>
+                </div>
+                <div class="gauge-bar">
+                    <div class="gauge-fill fill-low" id="gaugeFill" style="width: 18%;"></div>
+                </div>
+            </div>
+
+            <!-- Rodent Count -->
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">Rodents Detected</span>
+                    <span class="live-pill" id="livePill">LIVE</span>
+                </div>
+                <div class="kpi-value-row">
+                    <div class="kpi-value highlight-red" id="rodentCountVal">0</div>
+                    <div class="kpi-subtext" id="rodentPeakVal">Peak: 0</div>
+                </div>
+                <div class="kpi-caption" id="rodentCaption">Frame-by-frame AI detection</div>
+            </div>
+
+            <!-- Rainfall -->
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">24h Rainfall</span>
+                    <button class="icon-btn" id="btnRefreshWeather" title="Sync Open-Meteo Weather">🔄 Sync</button>
+                </div>
+                <div class="kpi-value-row">
+                    <div class="kpi-value" id="rainfallVal">18.0</div>
+                    <span class="unit">mm</span>
+                </div>
+                <div class="kpi-caption">Open-Meteo API baseline</div>
+            </div>
+
+            <!-- Drain Risk -->
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">Drain-Flow Risk</span>
+                    <span class="kpi-subtext" id="drainSliderValText">55/100</span>
+                </div>
+                <div class="slider-container">
+                    <input type="range" id="drainRiskSlider" min="0" max="100" value="55" class="slider">
+                </div>
+                <div class="kpi-caption">Field observation slider</div>
+            </div>
+        </section>
+
+        <!-- Main Dashboard Split Layout -->
+        <main class="dashboard-grid">
+            <!-- Left Panel: Live Stream & AI Controls -->
+            <div class="panel vision-panel">
+                <div class="panel-header">
+                    <h2>📹 Live AI Stream & Detection</h2>
+                    <div class="header-actions">
+                        <button class="btn-power active" id="btnPowerToggle" title="Turn Stream On / Off">
+                            <span class="power-icon">⏻</span> <span id="powerBtnText">Camera ON</span>
+                        </button>
+                        <span class="fps-counter" id="fpsCounter">FPS: --</span>
+                    </div>
+                </div>
+
+                <!-- Video Stream Frame -->
+                <div class="video-wrapper">
+                    <img id="videoStream" src="/api/stream" alt="Live Camera YOLO Stream" crossorigin="anonymous">
+                    <div class="video-overlay-badge" id="videoOverlayBadge">
+                        <span class="overlay-dot"></span>
+                        <span id="videoOverlayText">RODENTS DETECTED: 0</span>
+                    </div>
+                </div>
+
+                <!-- Controls & Tuning -->
+                <div class="controls-card">
+                    <h3>⚙️ Input Source & Model Controls</h3>
+                    
+                    <div class="control-group">
+                        <label>Select Source Input</label>
+                        <div class="btn-toggle-group">
+                            <button class="btn-toggle active" id="btnSourceWebcam">Webcam</button>
+                            <button class="btn-toggle" id="btnSourceIpCam">IP Camera</button>
+                            <button class="btn-toggle" id="btnSourceVideoFile">Uploaded Video</button>
+                        </div>
+                    </div>
+
+                    <!-- Webcam Selection -->
+                    <div class="control-row" id="webcamRow">
+                        <label for="webcamIndex">Webcam Index:</label>
+                        <select id="webcamIndex" class="select-input">
+                            <option value="0">Index 0 (Default Webcam)</option>
+                            <option value="1">Index 1 (USB / DroidCam)</option>
+                            <option value="2">Index 2</option>
+                        </select>
+                    </div>
+
+                    <!-- IP Cam Selection -->
+                    <div class="control-row hidden" id="ipCamRow">
+                        <label for="ipCamUrl">Stream URL:</label>
+                        <div class="input-with-btn">
+                            <input type="text" id="ipCamUrl" class="text-input" placeholder="http://192.168.1.23:8080/video">
+                            <button class="btn-primary" id="btnApplyIpCam">Connect</button>
+                        </div>
+                    </div>
+
+                    <!-- Video Upload Selection -->
+                    <div class="control-row hidden" id="videoFileRow">
+                        <label for="videoFileInput">Upload Video File (e.g. Rat Environment Simulation):</label>
+                        <div class="input-with-btn">
+                            <input type="file" id="videoFileInput" accept="video/*" class="file-input">
+                            <button class="btn-primary" id="btnUploadVideo">Upload & Play</button>
+                        </div>
+                        <span class="kpi-caption" id="videoUploadStatus">Select an MP4, AVI, or MOV video file to analyze.</span>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <!-- AI Model Controls -->
+                    <div class="control-group">
+                        <label for="modelWeightsSelect">YOLO Weights Model</label>
+                        <select id="modelWeightsSelect" class="select-input">
+                            <option value="runs/detect/runs/rat_yolov8/weights/best.pt">Rat-Trained Model (runs/.../best.pt)</option>
+                            <option value="yolov8n.pt">COCO General Model (yolov8n.pt)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-row">
+                        <div class="label-with-val">
+                            <label for="confSlider">Detection Confidence Threshold:</label>
+                            <strong id="confValText">50%</strong>
+                        </div>
+                        <input type="range" id="confSlider" min="0.10" max="0.90" step="0.05" value="0.50" class="slider">
+                    </div>
+
+                    <div class="control-row checkbox-row">
+                        <input type="checkbox" id="chkHumanFP" checked>
+                        <label for="chkHumanFP">Suppress Human False-Positives (Active)</label>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <!-- Manual Override Switch -->
+                    <div class="control-row checkbox-row">
+                        <input type="checkbox" id="chkManualOverride">
+                        <label for="chkManualOverride">Manual Rodent Count Override (Demo Fallback)</label>
+                    </div>
+
+                    <div class="control-row hidden" id="manualCountRow">
+                        <label for="manualCountInput">Manual Rodent Count:</label>
+                        <input type="number" id="manualCountInput" min="0" max="50" value="3" class="num-input">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Risk Breakdown & Guidance -->
+            <div class="panel intelligence-panel">
+                <div class="panel-header">
+                    <h2>📊 Leptospirosis Exposure Breakdown</h2>
+                </div>
+
+                <!-- Risk Synergy Banner (Dynamic) -->
+                <div class="synergy-banner hidden" id="synergyBanner">
+                    <span class="warning-icon">⚠️</span>
+                    <div>
+                        <strong>SYNERGY RISK ELEVATION ACTIVE</strong>
+                        <p>High rodent density, rain runoff, and drain blockage detected simultaneously.</p>
+                    </div>
+                </div>
+
+                <!-- Explanation List -->
+                <div class="explanation-card">
+                    <h3>Risk Component Indices</h3>
+                    <ul class="explanation-list" id="explanationList">
+                        <li><span>Rodent activity index:</span> <strong id="expRodent">0/100</strong></li>
+                        <li><span>Rainfall index:</span> <strong id="expRain">45/100</strong></li>
+                        <li><span>Drain-flow risk:</span> <strong id="expDrain">55/100</strong></li>
+                        <li><span>Historical area risk:</span> <strong id="expHist">45/100</strong></li>
+                    </ul>
+                </div>
+
+                <!-- Action Cards -->
+                <div class="action-card municipal-card">
+                    <div class="card-tag">MUNICIPAL ACTION PLAN</div>
+                    <h4 id="municipalActionText">Continue routine monitoring. No urgent field action required.</h4>
+                </div>
+
+                <div class="action-card citizen-card">
+                    <div class="card-tag">CITIZEN SAFETY ALERT</div>
+                    <h4 id="citizenActionText">Normal hygiene precautions. Avoid contact with drain water.</h4>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
