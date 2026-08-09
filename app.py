@@ -67,31 +67,31 @@ def risk_band(score: float) -> str:
 def calculate_risk(
     rodent_count: int,
     rainfall_mm: float,
-    drain_risk: float,
+    water_level: float,
     historical_risk: float,
 ) -> RiskResult:
     rodent_index = min(100, rodent_count * 18)
     rainfall_index = min(100, rainfall_mm * 2.5)
-    drain_index = drain_risk
+    water_level_index = water_level
     historical_index = historical_risk
 
     score = (
         rodent_index * 0.35
         + rainfall_index * 0.30
-        + drain_index * 0.25
+        + water_level_index * 0.25
         + historical_index * 0.10
     )
 
     explanation = [
         f"Rodent activity index: {rodent_index:.0f}/100 from {rodent_count} detections.",
         f"Rainfall index: {rainfall_index:.0f}/100 from {rainfall_mm:.1f} mm recent rainfall.",
-        f"Drain-flow risk: {drain_index:.0f}/100 based on the manual field slider.",
+        f"Water level index: {water_level_index:.0f}/100 (suggested/manual override).",
         f"Historical area risk: {historical_index:.0f}/100 based on local prior risk.",
     ]
 
-    if rodent_count > 0 and rainfall_mm >= 20 and drain_risk >= 60:
+    if rodent_count > 0 and rainfall_mm >= 20 and water_level >= 60:
         score = min(100, score + 10)
-        explanation.append("Synergy boost applied because rodents, heavy rain, and poor drainage overlap.")
+        explanation.append("Synergy boost applied because rodents, heavy rain, and high water levels overlap.")
 
     rounded = int(round(min(100, max(0, score))))
     return RiskResult(score=rounded, level=risk_band(rounded), explanation=explanation)
@@ -283,12 +283,12 @@ def test_ip_camera_url(url: str) -> tuple[bool, str]:
     except requests.RequestException as exc:
         return False, f"Laptop could not reach the phone: {exc}"
 
-def render_metric_strip(risk: RiskResult, rodent_count: int, rainfall_mm: float, drain_risk: float) -> None:
+def render_metric_strip(risk: RiskResult, rodent_count: int, rainfall_mm: float, water_level: float) -> None:
     cols = st.columns(4)
     cols[0].metric("Exposure Risk", f"{risk.score}/100", risk.level)
     cols[1].metric("Rodents Detected", rodent_count)
     cols[2].metric("Recent Rainfall", f"{rainfall_mm:.1f} mm")
-    cols[3].metric("Drain Risk", f"{drain_risk:.0f}/100")
+    cols[3].metric("Water Level", f"{water_level:.0f}/100")
 
 
 def render_gauge(score: int) -> None:
@@ -391,16 +391,24 @@ def main() -> None:
         latitude = st.number_input("Latitude", value=3.1390, format="%.6f")
         longitude = st.number_input("Longitude", value=101.6869, format="%.6f")
         manual_rainfall = st.slider("Manual recent rainfall (mm)", 0.0, 120.0, 18.0, 1.0)
-        drain_risk = st.slider("Drain water/flow risk", 0, 100, 55)
-        historical_risk = st.slider("Historical area risk", 0, 100, 45)
+        
+        # Resolve rainfall first to suggest water level dynamically
+        rainfall_mm = manual_rainfall
+        if use_weather_api:
+            api_rainfall = get_open_meteo_rainfall(latitude, longitude)
+            if api_rainfall is None:
+                st.warning("Weather API unavailable. Using manual rainfall input.")
+            else:
+                rainfall_mm = api_rainfall
 
-    rainfall_mm = manual_rainfall
-    if use_weather_api:
-        api_rainfall = get_open_meteo_rainfall(latitude, longitude)
-        if api_rainfall is None:
-            st.warning("Weather API unavailable. Using manual rainfall input.")
-        else:
-            rainfall_mm = api_rainfall
+        suggested_water_level = min(100, int(round(rainfall_mm * 5.0)))
+        water_level = st.slider(
+            "Water Level Measure Indicator", 
+            0, 100, 
+            value=suggested_water_level,
+            help="Suggested based on 24h rainfall (1mm = 5%). Adjust to override."
+        )
+        historical_risk = st.slider("Historical area risk", 0, 100, 45)
 
     try:
         model = load_model(weights_path)
@@ -498,8 +506,8 @@ def main() -> None:
     if manual_override:
         rodent_count = right.number_input("Rodent count", 0, 100, max(rodent_count, 2))
 
-    risk = calculate_risk(rodent_count, rainfall_mm, float(drain_risk), float(historical_risk))
-    render_metric_strip(risk, rodent_count, rainfall_mm, float(drain_risk))
+    risk = calculate_risk(rodent_count, rainfall_mm, float(water_level), float(historical_risk))
+    render_metric_strip(risk, rodent_count, rainfall_mm, float(water_level))
     render_gauge(risk.score)
 
     with right:

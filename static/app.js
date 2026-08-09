@@ -16,9 +16,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const rainfallVal = document.getElementById("rainfallVal");
     const btnRefreshWeather = document.getElementById("btnRefreshWeather");
+    const weatherTempBadge = document.getElementById("weatherTempBadge");
+    const weatherLocationSelect = document.getElementById("weatherLocationSelect");
+    const weatherSyncStatus = document.getElementById("weatherSyncStatus");
 
-    const drainRiskSlider = document.getElementById("drainRiskSlider");
-    const drainSliderValText = document.getElementById("drainSliderValText");
+    const waterLevelSlider = document.getElementById("waterLevelSlider");
+    const waterLevelValText = document.getElementById("waterLevelValText");
 
     const btnSourceWebcam = document.getElementById("btnSourceWebcam");
     const btnSourceIpCam = document.getElementById("btnSourceIpCam");
@@ -48,7 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const synergyBanner = document.getElementById("synergyBanner");
     const expRodent = document.getElementById("expRodent");
     const expRain = document.getElementById("expRain");
-    const expDrain = document.getElementById("expDrain");
+    const expWaterLevel = document.getElementById("expWaterLevel");
     const expHist = document.getElementById("expHist");
     const municipalActionText = document.getElementById("municipalActionText");
     const citizenActionText = document.getElementById("citizenActionText");
@@ -61,7 +64,7 @@ document.addEventListener("DOMContentLoaded", () => {
         fps: 0,
     };
     let rainfallMm = 18.0;
-    let drainRiskScore = 55.0;
+    let waterLevelScore = 90.0; // Suggested based on default rainfallMm (18 * 5 = 90)
     let historicalRiskScore = 45.0;
     let isManualOverride = false;
     let manualCount = 3;
@@ -233,7 +236,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const payload = {
             rodent_count: currentStats.current_count,
             rainfall_mm: rainfallMm,
-            drain_risk: drainRiskScore,
+            water_level: waterLevelScore,
             historical_risk: historicalRiskScore,
             manual_override: isManualOverride,
             manual_count: manualCount
@@ -272,7 +275,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             expRodent.textContent = `${res.rodent_index}/100`;
             expRain.textContent = `${res.rainfall_index}/100`;
-            expDrain.textContent = `${res.drain_index}/100`;
+            expWaterLevel.textContent = `${res.water_level_index}/100`;
             expHist.textContent = `${res.historical_index}/100`;
 
             if (res.synergy_boost) {
@@ -292,12 +295,24 @@ document.addEventListener("DOMContentLoaded", () => {
     // Weather Sync
     async function syncWeather() {
         btnRefreshWeather.textContent = "⏳ Syncing...";
+        const locKey = weatherLocationSelect ? weatherLocationSelect.value : "kuala_lumpur";
         try {
-            const resp = await fetch("/api/weather");
+            const resp = await fetch(`/api/weather?location=${encodeURIComponent(locKey)}`);
             const data = await resp.json();
             if (data.rainfall_mm !== undefined) {
                 rainfallMm = data.rainfall_mm;
                 rainfallVal.textContent = rainfallMm.toFixed(1);
+
+                if (weatherTempBadge && data.temperature_c !== undefined) {
+                    weatherTempBadge.textContent = `🌤️ ${data.temperature_c.toFixed(1)}°C`;
+                    weatherTempBadge.title = `Humidity: ${data.humidity_pct}% | Rain: ${data.current_rain_mm} mm`;
+                }
+
+                // Auto-suggest and update the water level (1mm rain = 5% water level)
+                waterLevelScore = Math.min(100, Math.round(rainfallMm * 5.0));
+                waterLevelSlider.value = waterLevelScore;
+                waterLevelValText.textContent = `${waterLevelScore}/100`;
+
                 recalculateRisk();
             }
         } catch (e) {
@@ -308,9 +323,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Event Listeners
-    drainRiskSlider.addEventListener("input", (e) => {
-        drainRiskScore = parseFloat(e.target.value);
-        drainSliderValText.textContent = `${drainRiskScore.toFixed(0)}/100`;
+    waterLevelSlider.addEventListener("input", (e) => {
+        waterLevelScore = parseFloat(e.target.value);
+        waterLevelValText.textContent = `${waterLevelScore.toFixed(0)}/100`;
         recalculateRisk();
     });
 
@@ -373,9 +388,163 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     btnRefreshWeather.addEventListener("click", syncWeather);
+    if (weatherLocationSelect) {
+        weatherLocationSelect.addEventListener("change", syncWeather);
+    }
+
+    // Auto-refresh weather every 5 minutes (300,000 ms)
+    setInterval(syncWeather, 300000);
+    // Initial weather sync on load
+    syncWeather();
+    // PDF Report — Handled by standalone /static/pdf_report.js
+
+    // Tab Navigation & Geospatial Map Logic
+    const tabBtnVision = document.getElementById("tabBtnVision");
+    const tabBtnMap = document.getElementById("tabBtnMap");
+    const tabViewVision = document.getElementById("tabViewVision");
+    const tabViewMap = document.getElementById("tabViewMap");
+
+    let leafletMap = null;
+    let mapMarkers = [];
+
+    tabBtnVision.addEventListener("click", () => {
+        tabBtnVision.classList.add("active");
+        tabBtnMap.classList.remove("active");
+        tabViewVision.classList.remove("hidden");
+        tabViewMap.classList.add("hidden");
+    });
+
+    tabBtnMap.addEventListener("click", () => {
+        tabBtnMap.classList.add("active");
+        tabBtnVision.classList.remove("active");
+        tabViewMap.classList.remove("hidden");
+        tabViewVision.classList.add("hidden");
+
+        if (!leafletMap) {
+            initLeafletMap();
+        } else {
+            setTimeout(() => leafletMap.invalidateSize(), 200);
+        }
+        loadNodesData();
+    });
+
+    function getBadgeClass(level) {
+        if (level === "Critical") return "badge-critical";
+        if (level === "High") return "badge-high";
+        if (level === "Moderate") return "badge-moderate";
+        return "badge-low";
+    }
+
+    function getMarkerColor(level) {
+        if (level === "Critical") return "#ef4444";
+        if (level === "High") return "#f97316";
+        if (level === "Moderate") return "#f59e0b";
+        return "#10b981";
+    }
+
+    function initLeafletMap() {
+        if (typeof L === "undefined") return;
+        
+        // Center on Kuala Lumpur
+        leafletMap = L.map("nodeMap").setView([3.1390, 101.6869], 13);
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 18,
+        }).addTo(leafletMap);
+    }
+
+    async function loadNodesData() {
+        try {
+            const resp = await fetch("/api/nodes");
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!data.nodes) return;
+
+            const nodes = data.nodes;
+            
+            // Update Summary KPI Bar
+            document.getElementById("totalNodesCount").textContent = nodes.length;
+            const criticalCount = nodes.filter(n => n.risk_level === "Critical").length;
+            const highCount = nodes.filter(n => n.risk_level === "High").length;
+            const avgScore = Math.round(nodes.reduce((acc, n) => acc + n.lers_score, 0) / nodes.length);
+
+            document.getElementById("criticalNodesCount").textContent = criticalCount;
+            document.getElementById("highNodesCount").textContent = highCount;
+            document.getElementById("avgLersScore").textContent = avgScore;
+
+            // Clear old markers
+            mapMarkers.forEach(m => leafletMap.removeLayer(m));
+            mapMarkers = [];
+
+            // Populate Table & Map Markers
+            const tbody = document.getElementById("nodeTableBody");
+            tbody.innerHTML = "";
+
+            nodes.forEach(node => {
+                const color = getMarkerColor(node.risk_level);
+                
+                // Circle Marker
+                const circle = L.circleMarker([node.latitude, node.longitude], {
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: 0.8,
+                    radius: 10
+                }).addTo(leafletMap);
+
+                const popupContent = `
+                    <div class="popup-node-card">
+                        <h4>📍 ${node.name} (${node.id})</h4>
+                        <div class="popup-metrics">
+                            <div><span>LERS Score:</span> <strong>${node.lers_score}/100 (${node.risk_level})</strong></div>
+                            <div><span>Rodents Detected:</span> <strong>${node.rodent_count}</strong></div>
+                            <div><span>Water Level:</span> <strong>${node.water_level_pct}%</strong></div>
+                            <div><span>Rainfall:</span> <strong>${node.rainfall_mm} mm</strong></div>
+                        </div>
+                        <div style="font-size:0.75rem; color:#94a3b8; border-top:1px solid #334155; padding-top:0.3rem;">
+                            <strong>Municipal Action:</strong> ${node.municipal_action}
+                        </div>
+                    </div>
+                `;
+
+                circle.bindPopup(popupContent);
+                mapMarkers.push(circle);
+
+                // Table Row
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td><code>${node.id}</code></td>
+                    <td><strong>${node.name}</strong></td>
+                    <td>${node.rodent_count}</td>
+                    <td>${node.rainfall_mm} mm</td>
+                    <td>${node.water_level_pct}%</td>
+                    <td><strong>${node.lers_score}/100</strong></td>
+                    <td><span class="risk-badge ${getBadgeClass(node.risk_level)}">${node.risk_level.toUpperCase()}</span></td>
+                    <td><button class="btn-focus">Center Map</button></td>
+                `;
+
+                tr.querySelector(".btn-focus").addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    leafletMap.flyTo([node.latitude, node.longitude], 15, { duration: 1.2 });
+                    circle.openPopup();
+                });
+
+                tr.addEventListener("click", () => {
+                    leafletMap.flyTo([node.latitude, node.longitude], 15, { duration: 1.2 });
+                    circle.openPopup();
+                });
+
+                tbody.appendChild(tr);
+            });
+
+        } catch (e) {
+            console.error("Failed to load node data:", e);
+        }
+    }
 
     // Init
     loadConfig();
     recalculateRisk();
     setInterval(fetchStats, 500);
 });
+

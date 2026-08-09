@@ -7,7 +7,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
     <div class="app-container">
@@ -21,15 +23,25 @@
                 </div>
             </div>
             <div class="header-status">
+                <button class="icon-btn highlight-btn" id="btnExportPDFHeader" title="Export Official PDF Incident Report" style="background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; border: none; padding: 6px 12px; font-weight: 600; font-size: 0.82rem; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(37,99,235,0.3);">📄 Export PDF Report</button>
                 <div class="status-badge" id="engineStatusBadge">
                     <span class="pulse-dot"></span>
-                    <span id="engineStatusText">AI Inference Active</span>
+                    <span id="engineStatusText">Inference Active</span>
                 </div>
                 <div class="model-badge" id="activeModelBadge">
                     Model: <strong>best.pt (Rodent YOLOv8)</strong>
                 </div>
             </div>
         </header>
+
+        <!-- Main Navigation Tabs -->
+        <nav class="tab-nav">
+            <button class="nav-tab active" id="tabBtnVision">📹 Live Vision Engine</button>
+            <button class="nav-tab" id="tabBtnMap">🗺️ Geospatial City Map (Kuala Lumpur)</button>
+        </nav>
+
+        <!-- TAB 1: Live Vision Engine View -->
+        <div id="tabViewVision" class="tab-view active">
 
         <!-- KPI Metrics Strip -->
         <section class="kpi-grid">
@@ -46,6 +58,7 @@
                 <div class="gauge-bar">
                     <div class="gauge-fill fill-low" id="gaugeFill" style="width: 18%;"></div>
                 </div>
+                <button class="icon-btn" id="btnExportPDFRisk" title="Export PDF Incident Report" style="margin-top: 10px; font-size: 0.75rem; width: 100%; display: flex; justify-content: center; background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px 8px; cursor: pointer;">📄 Export PDF Report</button>
             </div>
 
             <!-- Rodent Count -->
@@ -58,41 +71,51 @@
                     <div class="kpi-value highlight-red" id="rodentCountVal">0</div>
                     <div class="kpi-subtext" id="rodentPeakVal">Peak: 0</div>
                 </div>
-                <div class="kpi-caption" id="rodentCaption">Frame-by-frame AI detection</div>
+                <div class="kpi-caption" id="rodentCaption">Frame-by-frame detection</div>
             </div>
 
-            <!-- Rainfall -->
+            <!-- Rainfall & Weather -->
             <div class="kpi-card">
                 <div class="kpi-header">
-                    <span class="kpi-label">24h Rainfall</span>
+                    <span class="kpi-label">24h Rainfall & Weather</span>
                     <button class="icon-btn" id="btnRefreshWeather" title="Sync Open-Meteo Weather">🔄 Sync</button>
                 </div>
                 <div class="kpi-value-row">
                     <div class="kpi-value" id="rainfallVal">18.0</div>
                     <span class="unit">mm</span>
+                    <span id="weatherTempBadge" style="margin-left:auto; font-size: 0.82rem; background: rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 6px; color: var(--text-muted);">🌤️ --°C</span>
                 </div>
-                <div class="kpi-caption">Open-Meteo API baseline</div>
+                <div class="kpi-caption" style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                    <select id="weatherLocationSelect" style="background: rgba(15, 23, 42, 0.8); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 3px 6px; font-size: 0.75rem; cursor: pointer;">
+                        <option value="kuala_lumpur">📍 Kuala Lumpur</option>
+                        <option value="penang">📍 Penang (George Town)</option>
+                        <option value="johor_bahru">📍 Johor Bahru</option>
+                        <option value="shah_alam">📍 Shah Alam</option>
+                        <option value="ipoh">📍 Ipoh</option>
+                    </select>
+                    <span id="weatherSyncStatus" style="font-size: 0.7rem; color: #64748b;">Auto-sync: 5m</span>
+                </div>
             </div>
 
-            <!-- Drain Risk -->
+            <!-- Water Level Measure Indicator -->
             <div class="kpi-card">
                 <div class="kpi-header">
-                    <span class="kpi-label">Drain-Flow Risk</span>
-                    <span class="kpi-subtext" id="drainSliderValText">55/100</span>
+                    <span class="kpi-label">Water Level Measure Indicator</span>
+                    <span class="kpi-subtext" id="waterLevelValText">90/100</span>
                 </div>
                 <div class="slider-container">
-                    <input type="range" id="drainRiskSlider" min="0" max="100" value="55" class="slider">
+                    <input type="range" id="waterLevelSlider" min="0" max="100" value="90" class="slider">
                 </div>
-                <div class="kpi-caption">Field observation slider</div>
+                <div class="kpi-caption">Suggested from weather / Ultrasonic mock</div>
             </div>
         </section>
 
         <!-- Main Dashboard Split Layout -->
         <main class="dashboard-grid">
-            <!-- Left Panel: Live Stream & AI Controls -->
+            <!-- Left Panel: Live Stream & Controls -->
             <div class="panel vision-panel">
                 <div class="panel-header">
-                    <h2>📹 Live AI Stream & Detection</h2>
+                    <h2>📹 Live Stream & Detection</h2>
                     <div class="header-actions">
                         <button class="btn-power active" id="btnPowerToggle" title="Turn Stream On / Off">
                             <span class="power-icon">⏻</span> <span id="powerBtnText">Camera ON</span>
@@ -154,7 +177,7 @@
 
                     <div class="divider"></div>
 
-                    <!-- AI Model Controls -->
+                    <!-- Model Controls -->
                     <div class="control-group">
                         <label for="modelWeightsSelect">YOLO Weights Model</label>
                         <select id="modelWeightsSelect" class="select-input">
@@ -202,7 +225,7 @@
                     <span class="warning-icon">⚠️</span>
                     <div>
                         <strong>SYNERGY RISK ELEVATION ACTIVE</strong>
-                        <p>High rodent density, rain runoff, and drain blockage detected simultaneously.</p>
+                        <p>High rodent density, rain runoff, and high water levels detected simultaneously.</p>
                     </div>
                 </div>
 
@@ -212,7 +235,7 @@
                     <ul class="explanation-list" id="explanationList">
                         <li><span>Rodent activity index:</span> <strong id="expRodent">0/100</strong></li>
                         <li><span>Rainfall index:</span> <strong id="expRain">45/100</strong></li>
-                        <li><span>Drain-flow risk:</span> <strong id="expDrain">55/100</strong></li>
+                        <li><span>Water level index:</span> <strong id="expWaterLevel">90/100</strong></li>
                         <li><span>Historical area risk:</span> <strong id="expHist">45/100</strong></li>
                     </ul>
                 </div>
@@ -229,8 +252,76 @@
                 </div>
             </div>
         </main>
+        </div>
+
+        <!-- TAB 2: Geospatial City Map View -->
+        <div id="tabViewMap" class="tab-view hidden">
+            <!-- Map KPI Summary Bar -->
+            <section class="map-kpi-grid">
+                <div class="kpi-card mini-kpi">
+                    <span class="kpi-label">Monitoring Nodes</span>
+                    <div class="kpi-value" id="totalNodesCount">5</div>
+                    <span class="kpi-subtext">Kuala Lumpur Zone</span>
+                </div>
+                <div class="kpi-card mini-kpi">
+                    <span class="kpi-label">Critical Risk Nodes</span>
+                    <div class="kpi-value highlight-red" id="criticalNodesCount">2</div>
+                    <span class="kpi-subtext">Immediate action required</span>
+                </div>
+                <div class="kpi-card mini-kpi">
+                    <span class="kpi-label">High Risk Nodes</span>
+                    <div class="kpi-value highlight-orange" id="highNodesCount">1</div>
+                    <span class="kpi-subtext">Prioritized for clearing</span>
+                </div>
+                <div class="kpi-card mini-kpi">
+                    <span class="kpi-label">Avg LERS Score</span>
+                    <div class="kpi-value highlight-yellow" id="avgLersScore">67</div>
+                    <span class="kpi-subtext">Citywide exposure baseline</span>
+                </div>
+            </section>
+
+            <!-- Map & Table Layout -->
+            <div class="map-layout">
+                <!-- Leaflet Interactive Map -->
+                <div class="panel map-panel">
+                    <div class="panel-header">
+                        <h2>📍 Kuala Lumpur Drain Network Map</h2>
+                        <span class="kpi-subtext">OpenStreetMap + Leaflet Engine</span>
+                    </div>
+                    <div id="nodeMap" class="leaflet-map-container"></div>
+                </div>
+
+                <!-- Node Directory Data Table -->
+                <div class="panel table-panel">
+                    <div class="panel-header">
+                        <h2>📊 Drain Node Monitoring Directory</h2>
+                        <span class="kpi-subtext">Click any row to focus map position</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="node-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Station Name</th>
+                                    <th>Rodents</th>
+                                    <th>Rainfall</th>
+                                    <th>Water Level</th>
+                                    <th>LERS Score</th>
+                                    <th>Level</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="nodeTableBody">
+                                <!-- Populated dynamically by app.js -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=3"></script>
+    <script src="/static/pdf_report.js?v=1"></script>
 </body>
 </html>
