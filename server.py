@@ -190,12 +190,15 @@ async def upload_video(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="No file provided")
     
     try:
-        clean_name = os.path.basename(file.filename)
-        dest_path = os.path.join(UPLOAD_DIR, clean_name)
-        
-        contents = await file.read()
-        with open(dest_path, "wb") as f:
-            f.write(contents)
+        try:
+            dest_path = os.path.join(UPLOAD_DIR, clean_name)
+            with open(dest_path, "wb") as f:
+                f.write(contents)
+        except Exception:
+            import tempfile
+            dest_path = os.path.join(tempfile.gettempdir(), clean_name)
+            with open(dest_path, "wb") as f:
+                f.write(contents)
             
         print(f"[Server] Video uploaded successfully ({len(contents)} bytes) to: {dest_path}")
         
