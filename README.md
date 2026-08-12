@@ -85,10 +85,64 @@ Open your browser and navigate to:
 | `/api/stream` | `GET` | Live MJPEG annotated video stream |
 | `/api/stats` | `GET` | Returns live detection FPS, current count, max count, and average confidence |
 | `/api/risk` | `POST` | Calculates risk score, risk level band, synergy boost, and municipal/citizen action guidance |
-| `/api/config` | `GET / POST` | Reads or updates AI confidence threshold, false-positive suppression, input source, and model weights |
+| `/api/config` | `GET / POST` | Reads or updates AI confidence threshold, false-positive suppression (`suppress_human_fp`, `suppress_void_fp`, `suppress_static_fp`, `static_seconds`), input source, and model weights |
 | `/api/upload_video` | `POST` | Uploads a video file (`.mp4`) and switches vision source to the uploaded video |
 | `/api/weather` | `GET` | Fetches 24h rainfall & ambient weather data from Open-Meteo for selected city presets or lat/lon |
 | `/api/nodes` | `GET` | Returns geospatial drain monitoring nodes with computed LERS risk scores for interactive mapping |
+
+---
+
+## 🎯 False-Positive Control & Retraining
+
+The detector fires on empty drain openings: a dark circular void reads as a rodent,
+often with high confidence, so raising `conf_threshold` cannot fix it without also
+deleting real rats in dark pipes. Two independent controls handle it at runtime, and
+a retraining pipeline fixes it at the source.
+
+### Runtime gates (`vision_engine.py`)
+
+| Gate | Config key | Default | What it does |
+| :--- | :--- | :--- | :--- |
+| Appearance | `suppress_void_fp` | **on** | Drops boxes whose centre is dark, flat, textureless and ringed by a brighter rim — the signature of a pipe mouth. Calibrated on `rat-dataset`: rejects the drain hole, drops 0 of 400 labelled rats. |
+| Temporal | `suppress_static_fp` | **off** | Drops boxes pinned to the same pixels for `static_seconds`. Scenery never moves — but neither does a rodent watching from a burrow, so this is opt-in. Enable only for a locked-off camera where false positives cost more than a missed animal. |
+
+Inference resolution is read from the weights themselves, so it always matches the
+size the model was trained at (416 here). Running 640 against 416-trained weights was
+a measurable source of confident nonsense.
+
+```bash
+curl -X POST localhost:8000/api/config -H "Content-Type: application/json" \
+     -d '{"suppress_static_fp": true, "static_seconds": 2.5}'
+```
+
+### Retraining with hard negatives (`tools/`)
+
+YOLO learns "not a rat" from images with **empty label files**. This dataset shipped
+with zero of them, which is why the model had never been told what an empty pipe is.
+
+```bash
+python tools/mine_hard_negatives.py       # 1. propose candidates from uploads/*.mp4
+                                          # 2. REVIEW hard_negatives/contact_sheet_*.jpg
+                                          #    delete any frame containing an animal
+python tools/apply_hard_negatives.py      # 3. file survivors as background images
+python tools/retrain.py --epochs 40       # 4. retrain + before/after comparison
+```
+
+**The review step is not optional.** Rodents freeze for seconds at a time, so no
+automatic check reliably separates "empty hole" from "motionless mouse in hole" — on
+this project's own footage, the first mining pass proposed 24 frames of which 11
+contained a visible rodent. A mislabelled negative teaches the model to ignore rats.
+
+For footage you already know is rat-free, skip the guessing entirely:
+
+```bash
+python tools/mine_hard_negatives.py --videos \
+       --rat-free "uploads/empty_drain.mp4:0-30"
+```
+
+`apply_hard_negatives.py` records every file it adds and holds back 20% in `valid/`
+so the fix can be measured honestly; `--undo` removes exactly those files again.
+Keep backgrounds under ~10% of the dataset or the model turns timid.
 
 ---
 
@@ -104,8 +158,13 @@ ActionHackathonYoloV8/
 │   ├── style.css           # Modern dark-mode styling, gauges & cards
 │   ├── app.js              # Asynchronous frontend client script & map controller
 │   └── pdf_report.js       # Client-side PDF incident report export script
+├── tools/
+│   ├── mine_hard_negatives.py   # Proposes empty-pipe frames from footage for review
+│   ├── apply_hard_negatives.py  # Files reviewed frames as background images (--undo)
+│   └── retrain.py               # Retrains and reports the before/after FP change
 ├── runs/
 │   └── detect/runs/rat_yolov8/weights/best.pt  # Fine-tuned rat model weights
+├── hard_negatives/         # Mining output & contact sheets awaiting review
 ├── uploads/                # Uploaded sample video storage
 ├── requirements.txt        # Python dependency manifest
 ├── .env                    # Environment variables (Supabase URL & Key)

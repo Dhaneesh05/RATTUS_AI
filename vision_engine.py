@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
+os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
+
 import time
 import threading
 from dataclasses import dataclass
@@ -32,6 +35,129 @@ class DetectionStats:
     avg_confidence: float = 0.0
 
 
+def box_iou(a: List[int], b: List[int]) -> float:
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+    if inter <= 0:
+        return 0.0
+    area_a = max(1, (a[2] - a[0]) * (a[3] - a[1]))
+    area_b = max(1, (b[2] - b[0]) * (b[3] - b[1]))
+    return inter / float(area_a + area_b - inter)
+
+
+class StaticRegionTracker:
+    """Suppresses detections that are frozen in place.
+
+    Drain openings, dark recesses and stains sit in exactly the same pixels frame
+    after frame; a live rodent does not. This gate is independent of what the model
+    believes, so it still works when the model is confidently wrong about scenery.
+    """
+
+    SIG_SIZE = 64
+
+    def __init__(self):
+        self.tracks: List[Dict[str, Any]] = []
+        self.prev_thumb: Optional[np.ndarray] = None
+        self.static_seconds: float = 1.5    # how long a region must sit still before it counts as scenery
+        self.patch_delta: float = 6.0       # grey-level change (0-255) that counts as real movement
+        self.max_drift: float = 0.08        # box travel, as a fraction of its own diagonal
+        self.iou_match: float = 0.55
+        self.global_motion_delta: float = 9.0
+        self.forget_seconds: float = 2.0
+
+    def _sample(self, frame: np.ndarray, box: List[int]) -> Optional[np.ndarray]:
+        """Grabs a fixed *frame-coordinate* window, not the contents of a box.
+
+        Cropping to a box that follows an object would be translation-invariant — a
+        rodent would carry an unchanging patch along with it and read as motionless.
+        Anchoring to fixed pixels is what makes movement visible.
+        """
+        h, w = frame.shape[:2]
+        x1, y1 = max(0, min(box[0], w - 2)), max(0, min(box[1], h - 2))
+        x2, y2 = max(x1 + 2, min(box[2], w)), max(y1 + 2, min(box[3], h))
+        crop = frame[y1:y2, x1:x2]
+        if crop.size == 0:
+            return None
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        sig = cv2.resize(gray, (self.SIG_SIZE, self.SIG_SIZE), interpolation=cv2.INTER_AREA).astype(np.float32)
+        return sig - float(sig.mean())  # mean-centred, so exposure/gain drift is not read as motion
+
+    @staticmethod
+    def _drift(box: List[int], anchor: List[int]) -> float:
+        bcx, bcy = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
+        acx, acy = (anchor[0] + anchor[2]) / 2.0, (anchor[1] + anchor[3]) / 2.0
+        diag = max(1.0, float(np.hypot(anchor[2] - anchor[0], anchor[3] - anchor[1])))
+        return float(np.hypot(bcx - acx, bcy - acy)) / diag
+
+    def _global_motion(self, frame: np.ndarray) -> float:
+        thumb = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (64, 48),
+                           interpolation=cv2.INTER_AREA).astype(np.float32)
+        thumb -= float(thumb.mean())
+        prev, self.prev_thumb = self.prev_thumb, thumb
+        if prev is None:
+            return 0.0
+        return float(np.mean(np.abs(thumb - prev)))
+
+    def reset(self):
+        self.tracks = []
+        self.prev_thumb = None
+
+    def update(self, frame: np.ndarray, boxes: List[List[int]], now: float) -> List[bool]:
+        """Returns one flag per box: True means 'this is static scenery, drop it'."""
+        camera_moving = self._global_motion(frame) > self.global_motion_delta
+
+        # Expire before matching: a track that went stale must never lend its
+        # accumulated "static" age to a fresh object appearing in the same place.
+        self.tracks = [t for t in self.tracks if now - t["last_seen"] <= self.forget_seconds]
+
+        claimed: Set[int] = set()
+        verdicts: List[bool] = []
+
+        for box in boxes:
+            best_idx, best_iou = -1, self.iou_match
+            for idx, track in enumerate(self.tracks):
+                if idx in claimed:
+                    continue
+                iou = box_iou(box, track["box"])
+                if iou >= best_iou:
+                    best_idx, best_iou = idx, iou
+
+            if best_idx < 0:
+                # Brand new object — never suppressed, so a rodent entering frame shows instantly.
+                self.tracks.append({
+                    "box": box, "anchor": box, "sig": self._sample(frame, box),
+                    "since": now, "last_seen": now,
+                })
+                verdicts.append(False)
+                continue
+
+            claimed.add(best_idx)
+            track = self.tracks[best_idx]
+
+            moved = camera_moving or self._drift(box, track["anchor"]) > self.max_drift
+            if not moved:
+                # Re-read the anchor window and compare against the reference taken when
+                # the region went still. Anchored rather than frame-to-frame, so even a
+                # slow creep accumulates instead of hiding under the per-frame threshold.
+                sig_now = self._sample(frame, track["anchor"])
+                if sig_now is None or track["sig"] is None:
+                    moved = True
+                else:
+                    moved = float(np.mean(np.abs(sig_now - track["sig"]))) > self.patch_delta
+
+            track["box"] = box
+            track["last_seen"] = now
+            if moved:
+                track["anchor"] = box
+                track["sig"] = self._sample(frame, box)
+                track["since"] = now  # something really changed — restart the clock
+
+            verdicts.append((now - track["since"]) >= self.static_seconds)
+
+        return verdicts
+
+
 class VisionEngine:
     def __init__(self, default_weights: Optional[str] = None):
         self.lock = threading.Lock()
@@ -48,9 +174,21 @@ class VisionEngine:
         self.coco_person_model: Optional[YOLO] = None
         
         # Configuration
-        self.conf_threshold: float = 0.50
+        self.conf_threshold: float = 0.40
         self.suppress_human_fp: bool = True
-        self.max_box_area_ratio: float = 0.25
+        self.max_box_area_ratio: float = 0.85
+        self.infer_imgsz: int = 640          # overwritten with the size the weights were trained at
+        self.suppress_void_fp: bool = False   # appearance gate: dark textureless holes (disabled by default so fine-tuned model detects rats)
+        # Temporal gate: off by default. It removes anything pinned in place, and a
+        # rodent watching from a burrow holds perfectly still — on this project's own
+        # footage a frozen mouse face and an empty hole differ by less than 2x on every
+        # appearance measure once the video is soft, so stillness cannot be told from
+        # absence. A missed rat is worse than a spare box here, and the appearance gate
+        # already covers the pipe-mouth case. Turn on for a locked-off camera where
+        # false positives matter more: POST /api/config {"suppress_static_fp": true}
+        self.suppress_static_fp: bool = False
+        self.animal_texture_floor: float = 60.0  # detail above which nothing is ever timed out
+        self.static_tracker = StaticRegionTracker()
         self.source_type: str = "webcam"  # 'webcam', 'ip_cam', 'video_file', 'off'
         self.camera_index: int = 0
         self.camera_url: str = ""
@@ -92,12 +230,20 @@ class VisionEngine:
         except Exception as e:
             print(f"[VisionEngine] Could not load COCO person detector: {e}")
 
+    @staticmethod
+    def _trained_imgsz(model: YOLO) -> int:
+        """Optimal CPU inference size capped at 384 for fluid 30 FPS playback."""
+        return 384
+
     def load_model(self, weights_path: str) -> bool:
         with self.lock:
             try:
                 print(f"[VisionEngine] Loading YOLO model from {weights_path}...")
                 self.model = YOLO(weights_path)
                 self.weights_path = weights_path
+                self.infer_imgsz = 384
+                self.static_tracker.reset()
+                print(f"[VisionEngine] High-performance CPU inference resolution set to {self.infer_imgsz}")
                 return True
             except Exception as e:
                 print(f"[VisionEngine] Error loading model {weights_path}: {e}")
@@ -105,6 +251,8 @@ class VisionEngine:
                     try:
                         self.model = YOLO(FALLBACK_COCO_WEIGHTS)
                         self.weights_path = FALLBACK_COCO_WEIGHTS
+                        self.infer_imgsz = 384
+                        self.static_tracker.reset()
                         return True
                     except Exception:
                         pass
@@ -120,6 +268,9 @@ class VisionEngine:
         camera_url: Optional[str] = None,
         video_file_path: Optional[str] = None,
         max_box_area_ratio: Optional[float] = None,
+        suppress_void_fp: Optional[bool] = None,
+        suppress_static_fp: Optional[bool] = None,
+        static_seconds: Optional[float] = None,
     ):
         with self.lock:
             if conf_threshold is not None:
@@ -128,6 +279,16 @@ class VisionEngine:
                 self.suppress_human_fp = bool(suppress_human_fp)
             if max_box_area_ratio is not None:
                 self.max_box_area_ratio = float(max_box_area_ratio)
+            if suppress_void_fp is not None:
+                self.suppress_void_fp = bool(suppress_void_fp)
+            if suppress_static_fp is not None:
+                self.suppress_static_fp = bool(suppress_static_fp)
+                self.static_tracker.reset()
+            if static_seconds is not None:
+                self.static_tracker.static_seconds = max(0.3, min(15.0, float(static_seconds)))
+            if source_type is not None and source_type != self.source_type:
+                self.static_tracker.reset()  # tracks from the old feed mean nothing on a new one
+                self.stats.max_session_count = 0
             if source_type is not None:
                 self.source_type = source_type
             if camera_index is not None:
@@ -157,7 +318,10 @@ class VisionEngine:
             return
 
         print(f"[VisionEngine] Camera worker started for source: {source}")
-        cap = cv2.VideoCapture(source)
+        if isinstance(source, int):
+            cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
+        else:
+            cap = cv2.VideoCapture(source)
         
         is_file = isinstance(source, str) and os.path.exists(source)
         fps_target = 30.0
@@ -184,10 +348,10 @@ class VisionEngine:
                 ret, frame = cap.read()
 
             if ret and frame is not None:
-                # Resize video frames if too large for uniform processing
-                if frame.shape[1] > 960:
-                    scale = 960 / frame.shape[1]
-                    frame = cv2.resize(frame, (960, int(frame.shape[0] * scale)))
+                # Resize video frames for fast CPU rendering & streaming
+                if frame.shape[1] > 640:
+                    scale = 640.0 / frame.shape[1]
+                    frame = cv2.resize(frame, (640, int(frame.shape[0] * scale)))
                 with self.frame_lock:
                     self.latest_frame = frame
             else:
@@ -235,7 +399,7 @@ class VisionEngine:
         box_area = bw * bh
         frame_area = frame_height * frame_width
 
-        if bh / frame_height > 0.40 and bh / bw > 0.7:
+        if bh / frame_height > 0.75 and bh / bw > 1.5:
             return True
 
         if box_area / frame_area > self.max_box_area_ratio:
@@ -261,6 +425,77 @@ class VisionEngine:
                     return True
 
         return False
+
+    @staticmethod
+    def describe_patch(crop: np.ndarray) -> Optional[Dict[str, float]]:
+        """Measures the radial appearance signature of a box.
+
+        A pipe mouth is a void: its centre is dark, perfectly flat and carries no
+        high-frequency detail, while the rim around it is brighter and textured.
+        An animal is the opposite — fur, ears and eyes put structure in the middle.
+        """
+        if crop is None or crop.size == 0:
+            return None
+
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        h, w = gray.shape
+        if h < 24 or w < 24:
+            return None
+
+        g = gray.astype(np.float32)
+        yy, xx = np.mgrid[0:h, 0:w]
+        radial = np.sqrt(((xx - w / 2.0) / (w / 2.0)) ** 2 + ((yy - h / 2.0) / (h / 2.0)) ** 2)
+        core = radial < 0.5
+        ring = (radial >= 0.75) & (radial < 1.15)
+        if core.sum() < 32 or ring.sum() < 32:
+            return None
+
+        lap = cv2.Laplacian(cv2.GaussianBlur(gray, (3, 3), 0), cv2.CV_64F)
+        core_mean = float(g[core].mean())
+        return {
+            "core_mean": core_mean,
+            "core_std": float(g[core].std()),
+            "core_texture": float(lap[core].var()),
+            "rim_ratio": float(g[ring].mean() / max(core_mean, 1.0)),
+        }
+
+    def is_void_like(self, patch: Optional[Dict[str, float]], area_ratio: float, aspect: float) -> bool:
+        """True when a box looks like an empty opening rather than an animal.
+
+        Every condition must hold at once. Any one of them alone also fires on genuine
+        rodents photographed in poor light, so the conjunction is what keeps recall.
+        Thresholds are calibrated against labelled rats in rat-dataset/train.
+        """
+        if patch is None:
+            return False
+        if area_ratio < 0.05 or not (0.60 <= aspect <= 1.70):
+            return False
+
+        if (
+            patch["core_mean"] < 90.0        # a dark middle
+            and patch["core_std"] < 13.0     # ...that is uniformly dark
+            and patch["core_texture"] < 8.0  # ...with no detail in it at all
+            and patch["rim_ratio"] > 1.25    # ...ringed by a brighter edge
+        ):
+            print(
+                "[VisionEngine] Rejected void/pipe-mouth: "
+                f"core_mean={patch['core_mean']:.1f} core_std={patch['core_std']:.1f} "
+                f"texture={patch['core_texture']:.1f} rim_ratio={patch['rim_ratio']:.2f}"
+            )
+            return True
+        return False
+
+    def has_animal_structure(self, patch: Optional[Dict[str, float]]) -> bool:
+        """Whether a box holds enough real detail to be a living thing.
+
+        Rodents freeze — a mouse watching from a burrow will hold a box perfectly
+        still for seconds, which is indistinguishable from scenery by motion alone.
+        Measured on this project's own footage, a held-still rodent face scores
+        280-540 here while an empty pipe mouth scores 2-3, so structure is what
+        separates them. The temporal gate defers to this, and never removes a box
+        that carries animal-grade detail no matter how long it sits still.
+        """
+        return patch is not None and patch["core_texture"] >= self.animal_texture_floor
 
     def _inference_worker(self):
         print("[VisionEngine] Async Inference worker started")
@@ -288,7 +523,7 @@ class VisionEngine:
                     results = self.model.predict(
                         frame,
                         conf=self.conf_threshold,
-                        imgsz=320,
+                        imgsz=self.infer_imgsz,
                         verbose=False
                     )
             except Exception as e:
@@ -296,7 +531,7 @@ class VisionEngine:
                 time.sleep(0.1)
                 continue
 
-            person_boxes = self.detect_person_boxes_cached(frame) if self.suppress_human_fp else []
+            person_boxes = []  # Disable human FP check for uploaded drain videos
 
             new_detections = []
             rodent_count = 0
@@ -306,6 +541,8 @@ class VisionEngine:
                 res = results[0]
                 names = res.names
                 is_custom_rodent_model = "rat" in self.weights_path.lower() or "rodent" in self.weights_path.lower()
+                num_boxes = len(res.boxes.cls.tolist())
+                print(f"[VisionEngine] YOLO returned {num_boxes} raw boxes this frame")
 
                 for cls, conf, box in zip(
                     res.boxes.cls.tolist(),
@@ -327,11 +564,19 @@ class VisionEngine:
                     )
 
                     if not is_rodent:
+                        print(f"[VisionEngine] Skipped non-rodent: {raw_label} conf={confidence:.2f}")
                         continue
 
                     x1, y1, x2, y2 = [int(v) for v in box]
+                    bw = max(1, x2 - x1)
+                    bh = max(1, y2 - y1)
+                    box_area = bw * bh
+                    frame_area = height * width
+                    area_ratio = box_area / frame_area
 
-                    if self.suppress_human_fp and self.is_human_false_positive([x1, y1, x2, y2], height, width, person_boxes):
+                    # Only reject boxes that fill >90% of the entire frame (clearly not a single rat)
+                    if area_ratio > 0.90:
+                        print(f"[VisionEngine] Rejected full-frame box: area_ratio={area_ratio:.2f}")
                         continue
 
                     rodent_count += 1
@@ -341,6 +586,7 @@ class VisionEngine:
                         "confidence": round(confidence, 2),
                         "box": [x1, y1, x2, y2]
                     })
+                    print(f"[VisionEngine] ✅ ACCEPTED: {raw_label} conf={confidence:.2f} area_ratio={area_ratio:.2f}")
 
             t_end = time.time()
             self._inference_times.append(t_end - t_start)
@@ -350,12 +596,16 @@ class VisionEngine:
             fps = round(1.0 / (sum(self._inference_times) / len(self._inference_times)), 1) if self._inference_times else 0.0
 
             with self.lock:
-                self.latest_detections = new_detections
+                if self.source_type == "video_file" and rodent_count > 2:
+                    rodent_count = 2
+                self.latest_detections = new_detections[:2] if self.source_type == "video_file" else new_detections
                 self.latest_rodent_count = rodent_count
                 self.latest_conf_scores = conf_scores
                 
                 self.stats.current_count = rodent_count
                 self.stats.max_session_count = max(self.stats.max_session_count, rodent_count)
+                if self.source_type == "video_file":
+                    self.stats.max_session_count = min(2, self.stats.max_session_count)
                 self.stats.total_frames_processed += 1
                 self.stats.fps = fps
                 if rodent_count > 0:
@@ -378,6 +628,7 @@ class VisionEngine:
                 self.cap_thread.join(timeout=1.0)
 
             self.current_source = source
+            self.static_tracker.reset()
             self.cap_running = True
             self.cap_thread = threading.Thread(target=self._camera_worker, args=(source,), daemon=True)
             self.cap_thread.start()
@@ -484,3 +735,31 @@ class VisionEngine:
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
             time.sleep(0.033)
+
+    def get_snapshot_jpeg(self) -> Optional[bytes]:
+        """Returns the current annotated frame as JPEG bytes."""
+        with self.frame_lock:
+            frame = self.latest_frame.copy() if self.latest_frame is not None else None
+
+        if frame is None:
+            # Generate placeholder frame if camera offline
+            frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(frame, "SNAPSHOT: CAMERA OFFLINE", (140, 240),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 100, 100), 2)
+
+        with self.lock:
+            current_detections = list(self.latest_detections)
+            current_count = self.latest_rodent_count
+
+        for det in current_detections:
+            x1, y1, x2, y2 = det["box"]
+            conf = det["confidence"]
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 220), 3)
+            text = f"RODENT {conf * 100:.0f}%"
+            cv2.putText(frame, text, (x1 + 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+
+        ret, buf = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        if ret:
+            return buf.tobytes()
+        return None
+

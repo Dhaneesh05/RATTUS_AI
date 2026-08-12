@@ -38,11 +38,11 @@
         var rainEl = document.getElementById("rainfallVal");
         var rainMm = rainEl ? rainEl.textContent.trim() : "0";
 
-        var tempEl = document.getElementById("weatherTempBadge");
-        var tempText = tempEl ? tempEl.textContent.trim() : "28°C";
+        var tempEl = document.getElementById("weatherTemp") || document.getElementById("weatherTempBadge");
+        var tempText = tempEl ? tempEl.textContent.trim() + "°C" : "34.5°C";
 
-        var waterEl = document.getElementById("waterLevelValText");
-        var waterLvl = waterEl ? waterEl.textContent.trim() : "50/100";
+        var waterEl = document.getElementById("waterLevelVal") || document.getElementById("waterLevelValText");
+        var waterLvl = waterEl ? waterEl.textContent.trim() + "%" : "85%";
 
         var munEl = document.getElementById("municipalActionText");
         var municipalText = munEl ? munEl.textContent.trim() : "Continue routine monitoring. No urgent field action required.";
@@ -66,7 +66,7 @@
         var html = [
             '<!DOCTYPE html>',
             '<html><head>',
-            '<title>RATTUS AI Incident Report — ' + cityName + '</title>',
+            '<title>RATTUS Incident Report — ' + cityName + '</title>',
             '<meta charset="UTF-8">',
             '<style>',
             '  @page { size: A4; margin: 15mm; }',
@@ -100,7 +100,7 @@
             '</head><body>',
             '<button class="print-bar" onclick="window.print()">🖨️ Print / Save as PDF</button>',
             '<div class="header">',
-            '  <h1>🐀 RATTUS AI — EXPOSURE-RISK INCIDENT REPORT</h1>',
+            '  <h1>🐀 RATTUS — EXPOSURE-RISK INCIDENT REPORT</h1>',
             '  <p>Report Ref: ' + refId + ' &nbsp;|&nbsp; Generated: ' + timeString + ' &nbsp;|&nbsp; Status: Verified Official Document</p>',
             '</div>',
             '<div class="location-box">📍 TARGET MONITORING LOCATION: ' + cityName.toUpperCase() + '</div>',
@@ -139,7 +139,7 @@
             '    <div>Signature: ____________________________________<br>Verification Date: _____________________________</div>',
             '  </div>',
             '</div>',
-            '<div class="footer">Generated automatically by RATTUS AI — Environmental Leptospirosis Exposure-Risk Intelligence Engine v2.1</div>',
+            '<div class="footer">Generated automatically by RATTUS — Environmental Leptospirosis Exposure-Risk Intelligence Engine v2.1</div>',
             '</body></html>'
         ].join('\n');
 
@@ -158,10 +158,10 @@
 
     // Bind click events to both PDF buttons once DOM is ready
     function bindButtons() {
-        var btn1 = document.getElementById("btnExportPDFHeader");
-        var btn2 = document.getElementById("btnExportPDFRisk");
-        if (btn1) btn1.addEventListener("click", generatePDFReport);
-        if (btn2) btn2.addEventListener("click", generatePDFReport);
+        var pdfBtns = document.querySelectorAll(".btn-export-pdf, #btnExportPDFHeader, #btnExportPDFReportsView, #btnExportPDFRisk");
+        pdfBtns.forEach(function(btn) {
+            btn.addEventListener("click", generatePDFReport);
+        });
         console.log("[PDF Report] Export buttons bound successfully.");
     }
 

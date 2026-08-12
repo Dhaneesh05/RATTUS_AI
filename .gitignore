@@ -28,3 +28,6 @@ Thumbs.db
 # Environment Variables
 .env
 
+# Hard Negatives Mining & Temporary Runs
+hard_negatives/
+runs/detect/rat_yolov8_hn/

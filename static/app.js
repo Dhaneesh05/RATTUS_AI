@@ -1,550 +1,1021 @@
+/**
+ * RATTUS AI — Command Center Interactive Client Controller
+ */
+
 document.addEventListener("DOMContentLoaded", () => {
-    // UI Elements
-    const btnPowerToggle = document.getElementById("btnPowerToggle");
-    const powerBtnText = document.getElementById("powerBtnText");
+    // --- Auth Session Check ---
+    const storedUser = localStorage.getItem("rattus_user");
+    let currentUser = storedUser ? JSON.parse(storedUser) : { email: "admin@example.com", role: "authority", name: "DBKL Municipal Officer" };
 
-    const rodentCountVal = document.getElementById("rodentCountVal");
-    const rodentPeakVal = document.getElementById("rodentPeakVal");
-    const fpsCounter = document.getElementById("fpsCounter");
-    const videoOverlayBadge = document.getElementById("videoOverlayBadge");
-    const videoOverlayText = document.getElementById("videoOverlayText");
-    const activeModelBadge = document.getElementById("activeModelBadge");
+    const userEmailText = document.getElementById("userEmailText");
+    const userRoleBadge = document.getElementById("userRoleBadge");
+    const btnLogoutHeader = document.getElementById("btnLogoutHeader");
 
+    if (userEmailText) userEmailText.textContent = currentUser.email;
+    if (userRoleBadge) {
+        userRoleBadge.textContent = currentUser.role === "authority" ? "🏛️ DBKL Officer" : "👥 Resident";
+    }
+
+    if (btnLogoutHeader) {
+        btnLogoutHeader.addEventListener("click", () => {
+            localStorage.removeItem("rattus_user");
+            window.location.href = "/login";
+        });
+    }
+
+    // --- UI Elements ---
+    // Top Bar & Badges
+    const btnExportPDFHeader = document.getElementById("btnExportPDFHeader");
+    const engineStatusBadge = document.getElementById("engineStatusBadge");
+    const engineStatusText = document.getElementById("engineStatusText");
+    const headerModelTag = document.getElementById("headerModelTag");
+
+    // KPI Strip
     const riskScoreVal = document.getElementById("riskScoreVal");
     const riskLevelBadge = document.getElementById("riskLevelBadge");
-    const gaugeFill = document.getElementById("gaugeFill");
-
+    const riskSparkline = document.getElementById("riskSparkline");
+    const rodentCountVal = document.getElementById("rodentCountVal");
+    const rodentPeakVal = document.getElementById("rodentPeakVal");
+    const livePill = document.getElementById("livePill");
     const rainfallVal = document.getElementById("rainfallVal");
     const btnRefreshWeather = document.getElementById("btnRefreshWeather");
-    const weatherTempBadge = document.getElementById("weatherTempBadge");
-    const weatherLocationSelect = document.getElementById("weatherLocationSelect");
     const weatherSyncStatus = document.getElementById("weatherSyncStatus");
-
+    const waterLevelVal = document.getElementById("waterLevelVal");
     const waterLevelSlider = document.getElementById("waterLevelSlider");
-    const waterLevelValText = document.getElementById("waterLevelValText");
+    const waterLevelBar = document.getElementById("waterLevelBar");
+    const waterLevelStatusText = document.getElementById("waterLevelStatusText");
+    const avgLersScore = document.getElementById("avgLersScore");
 
-    const btnSourceWebcam = document.getElementById("btnSourceWebcam");
-    const btnSourceIpCam = document.getElementById("btnSourceIpCam");
-    const btnSourceVideoFile = document.getElementById("btnSourceVideoFile");
+    // Left Column: Stream & HUD
+    const btnPowerToggle = document.getElementById("btnPowerToggle");
+    const btnExpandStream = document.getElementById("btnExpandStream");
+    const videoStream = document.getElementById("videoStream");
+    const videoHudScreen = document.getElementById("videoHudScreen");
+    const cameraOfflineHud = document.getElementById("cameraOfflineHud");
+    const fpsCounter = document.getElementById("fpsCounter");
 
-    const webcamRow = document.getElementById("webcamRow");
-    const ipCamRow = document.getElementById("ipCamRow");
-    const videoFileRow = document.getElementById("videoFileRow");
-
-    const webcamIndexSelect = document.getElementById("webcamIndex");
-    const ipCamUrlInput = document.getElementById("ipCamUrl");
-    const btnApplyIpCam = document.getElementById("btnApplyIpCam");
-
-    const videoFileInput = document.getElementById("videoFileInput");
-    const btnUploadVideo = document.getElementById("btnUploadVideo");
-    const videoUploadStatus = document.getElementById("videoUploadStatus");
-
-    const modelWeightsSelect = document.getElementById("modelWeightsSelect");
+    // Left Column: Detection & Radar
+    const detTodayCount = document.getElementById("detTodayCount");
+    const detPeakSub = document.getElementById("detPeakSub");
     const confSlider = document.getElementById("confSlider");
     const confValText = document.getElementById("confValText");
     const chkHumanFP = document.getElementById("chkHumanFP");
-
     const chkManualOverride = document.getElementById("chkManualOverride");
     const manualCountRow = document.getElementById("manualCountRow");
     const manualCountInput = document.getElementById("manualCountInput");
 
-    const synergyBanner = document.getElementById("synergyBanner");
-    const expRodent = document.getElementById("expRodent");
-    const expRain = document.getElementById("expRain");
-    const expWaterLevel = document.getElementById("expWaterLevel");
-    const expHist = document.getElementById("expHist");
+    // Left Column: Weather
+    const weatherIcon = document.getElementById("weatherIcon");
+    const weatherTemp = document.getElementById("weatherTemp");
+    const weatherCond = document.getElementById("weatherCond");
+    const weatherHumidity = document.getElementById("weatherHumidity");
+    const weatherWind = document.getElementById("weatherWind");
+
+    // Center Column: Geospatial Map
+    const chkHeatmap = document.getElementById("chkHeatmap");
+
+    // Right Column: Critical Nodes & Directives
+    const rankedNodesList = document.getElementById("rankedNodesList");
+    const btnViewAllNodes = document.getElementById("btnViewAllNodes");
     const municipalActionText = document.getElementById("municipalActionText");
     const citizenActionText = document.getElementById("citizenActionText");
 
-    // Local State
+    // Bottom Deck: Input Source
+    const btnSourceWebcam = document.getElementById("btnSourceWebcam");
+    const btnSourceIpCam = document.getElementById("btnSourceIpCam");
+    const btnSourceVideoFile = document.getElementById("btnSourceVideoFile");
+    const webcamRow = document.getElementById("webcamRow");
+    const ipCamRow = document.getElementById("ipCamRow");
+    const videoFileRow = document.getElementById("videoFileRow");
+    const webcamIndex = document.getElementById("webcamIndex");
+    const ipCamUrl = document.getElementById("ipCamUrl");
+    const btnApplyIpCam = document.getElementById("btnApplyIpCam");
+    const videoFileInput = document.getElementById("videoFileInput");
+    const btnUploadVideo = document.getElementById("btnUploadVideo");
+
+    // Bottom Deck: Model Controls
+    const modelWeightsSelect = document.getElementById("modelWeightsSelect");
+    const deckConfSlider = document.getElementById("deckConfSlider");
+    const deckConfVal = document.getElementById("deckConfVal");
+
+    // Bottom Deck: System Status
+    const sysModelLoad = document.getElementById("sysModelLoad");
+    const sysCameraStatus = document.getElementById("sysCameraStatus");
+    const sysLastUpdated = document.getElementById("sysLastUpdated");
+
+    // Bottom Deck: Quick Actions
+    const btnDeckHealth = document.getElementById("btnDeckHealth");
+    const btnDeckCalibrate = document.getElementById("btnDeckCalibrate");
+    const btnDeckSnapshot = document.getElementById("btnDeckSnapshot");
+    const toastContainer = document.getElementById("toastContainer");
+
+    // --- State Variables ---
     let isPowerOn = true;
-    let currentStats = {
-        current_count: 0,
-        max_session_count: 0,
-        fps: 0,
-    };
-    let rainfallMm = 18.0;
-    let waterLevelScore = 90.0; // Suggested based on default rainfallMm (18 * 5 = 90)
-    let historicalRiskScore = 45.0;
+    let currentStats = { current_count: 0, max_session_count: 0, fps: 0 };
+    let rainfallMm = 1.6;
+    let waterLevelPct = 85;
+    let historicalRiskScore = 45;
     let isManualOverride = false;
     let manualCount = 3;
+    let map = null;
+    let mapMarkers = [];
+    let mapHeatCircles = [];
+    let nodesData = [];
+    let lastStatsUpdateTime = Date.now();
 
-    // Fetch initial config
+    // --- Toast Notification Helper ---
+    function showToast(msg, type = "info") {
+        if (!toastContainer) return;
+        const toast = document.createElement("div");
+        toast.className = `toast toast-${type}`;
+        toast.innerHTML = msg;
+        toastContainer.appendChild(toast);
+        setTimeout(() => {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+        }, 4000);
+    }
+
+    // --- Sparkline Waveform Generator ---
+    function updateSparkline(score, level) {
+        if (!riskSparkline) return;
+        let color = "#10b981";
+        let gradId = "greenGrad";
+        if (level === "MODERATE") { color = "#f59e0b"; gradId = "amberGrad"; }
+        else if (level === "HIGH") { color = "#f97316"; gradId = "redGrad"; }
+        else if (level === "CRITICAL") { color = "#ef4444"; gradId = "redGrad"; }
+
+        // Dynamic normalized wave height based on score
+        const s = Math.max(5, Math.min(95, score));
+        const y1 = Math.round(26 - (s * 0.15));
+        const y2 = Math.round(22 - (s * 0.18));
+        const y3 = Math.round(16 - (s * 0.12));
+        const y4 = Math.round(10 - (s * 0.08));
+
+        const pathLine = `M0 26 Q 25 ${y1}, 45 ${y2} T 80 ${y3} T 110 ${y4} T 140 ${y2}`;
+        const pathFill = `${pathLine} L 140 28 L 0 28 Z`;
+
+        const fillEl = riskSparkline.querySelector(".sparkline-fill");
+        const lineEl = riskSparkline.querySelector(".sparkline-line");
+
+        if (fillEl) {
+            fillEl.setAttribute("d", pathFill);
+            fillEl.setAttribute("fill", `url(#${gradId})`);
+        }
+        if (lineEl) {
+            lineEl.setAttribute("d", pathLine);
+            lineEl.setAttribute("stroke", color);
+        }
+    }
+
+    // --- Load Model & Camera Configuration ---
     async function loadConfig() {
         try {
             const resp = await fetch("/api/config");
             if (!resp.ok) return;
             const data = await resp.json();
-            
-            confSlider.value = data.conf_threshold || 0.50;
-            confValText.textContent = `${Math.round(data.conf_threshold * 100)}%`;
-            chkHumanFP.checked = data.suppress_human_fp !== undefined ? data.suppress_human_fp : true;
-            
+
+            const conf = data.conf_threshold || 0.40;
+            if (confSlider) confSlider.value = conf;
+            if (deckConfSlider) deckConfSlider.value = conf;
+            const pctText = `${Math.round(conf * 100)}%`;
+            if (confValText) confValText.textContent = pctText;
+            if (deckConfVal) deckConfVal.textContent = pctText;
+
+            if (chkHumanFP) chkHumanFP.checked = data.suppress_human_fp !== undefined ? data.suppress_human_fp : true;
+
             if (data.weights_path) {
-                modelWeightsSelect.value = data.weights_path;
-                activeModelBadge.innerHTML = `Model: <strong>${data.weights_path.split(/[\\/]/).pop()}</strong>`;
+                const modelName = data.weights_path.split(/[\\/]/).pop();
+                if (headerModelTag) headerModelTag.textContent = modelName;
+                if (modelWeightsSelect) modelWeightsSelect.value = data.weights_path;
             }
 
             if (data.source_type === "off") {
                 setPowerState(false);
             } else {
                 setPowerState(true);
-                updateSourceTab(data.source_type);
+                updateSourceTab(data.source_type || "webcam");
             }
         } catch (e) {
             console.error("Config fetch failed:", e);
         }
     }
 
-    // Power Toggle State
+    // --- Power State Toggle ---
     function setPowerState(on) {
         isPowerOn = on;
-        if (on) {
-            btnPowerToggle.className = "btn-power active";
-            powerBtnText.textContent = "Camera ON";
-        } else {
-            btnPowerToggle.className = "btn-power off";
-            powerBtnText.textContent = "Camera OFF";
-        }
-    }
-
-    btnPowerToggle.addEventListener("click", () => {
-        const nextState = !isPowerOn;
-        setPowerState(nextState);
-        if (nextState) {
-            const activeTab = document.querySelector(".btn-toggle-group .btn-toggle.active");
-            if (activeTab === btnSourceIpCam) {
-                updateBackendConfig({ source_type: "ip_cam", camera_url: ipCamUrlInput.value });
-            } else if (activeTab === btnSourceVideoFile) {
-                updateBackendConfig({ source_type: "video_file" });
+        if (btnPowerToggle) {
+            if (on) {
+                btnPowerToggle.style.color = "var(--accent-blue)";
+                btnPowerToggle.style.borderColor = "var(--accent-blue)";
             } else {
-                updateBackendConfig({ source_type: "webcam", camera_index: parseInt(webcamIndexSelect.value) });
+                btnPowerToggle.style.color = "var(--accent-red)";
+                btnPowerToggle.style.borderColor = "var(--accent-red)";
             }
-        } else {
-            updateBackendConfig({ source_type: "off" });
         }
-    });
 
-    // Switch Tab UI
-    function updateSourceTab(sourceType) {
-        btnSourceWebcam.classList.remove("active");
-        btnSourceIpCam.classList.remove("active");
-        btnSourceVideoFile.classList.remove("active");
+        if (cameraOfflineHud) {
+            if (on) {
+                cameraOfflineHud.classList.add("hidden");
+            } else {
+                cameraOfflineHud.classList.remove("hidden");
+            }
+        }
 
-        webcamRow.classList.add("hidden");
-        ipCamRow.classList.add("hidden");
-        videoFileRow.classList.add("hidden");
-
-        if (sourceType === "ip_cam") {
-            btnSourceIpCam.classList.add("active");
-            ipCamRow.classList.remove("hidden");
-        } else if (sourceType === "video_file") {
-            btnSourceVideoFile.classList.add("active");
-            videoFileRow.classList.remove("hidden");
-        } else {
-            btnSourceWebcam.classList.add("active");
-            webcamRow.classList.remove("hidden");
+        if (sysCameraStatus) {
+            sysCameraStatus.innerHTML = on ? '<span class="text-green">● Live</span>' : '<span class="text-red">● Offline</span>';
         }
     }
 
-    // Update backend config
-    async function updateBackendConfig(payload) {
-        try {
-            const resp = await fetch("/api/config", {
+    if (btnPowerToggle) {
+        btnPowerToggle.addEventListener("click", async () => {
+            const nextPower = !isPowerOn;
+            setPowerState(nextPower);
+            try {
+                await fetch("/api/config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ source_type: nextPower ? "webcam" : "off" }),
+                });
+                showToast(`Camera power: ${nextPower ? "LIVE" : "OFFLINE"}`, nextPower ? "info" : "warning");
+            } catch (e) {
+                console.error("Failed to toggle camera power:", e);
+            }
+        });
+    }
+
+    // --- Fullscreen Video Stream ---
+    if (btnExpandStream && videoHudScreen) {
+        btnExpandStream.addEventListener("click", () => {
+            if (!document.fullscreenElement) {
+                videoHudScreen.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+    }
+
+    // --- Water Level Slider Event ---
+    if (waterLevelSlider) {
+        waterLevelSlider.addEventListener("input", (e) => {
+            const val = parseFloat(e.target.value) || 0;
+            waterLevelPct = val;
+            if (waterLevelVal) waterLevelVal.textContent = Math.round(val);
+            if (waterLevelStatusText) {
+                const tag = val >= 75 ? "Above normal" : (val >= 40 ? "Nominal" : "Low");
+                waterLevelStatusText.textContent = `${Math.round(val)}% ${tag}`;
+            }
+            recalcRisk();
+            fetchNodes(val); // Dynamically update all map nodes & heatmap auras in real-time!
+        });
+    }
+
+    // --- Synchronize Confidence Sliders ---
+    function handleConfChange(val) {
+        const pct = `${Math.round(val * 100)}%`;
+        if (confSlider) confSlider.value = val;
+        if (deckConfSlider) deckConfSlider.value = val;
+        if (confValText) confValText.textContent = pct;
+        if (deckConfVal) deckConfVal.textContent = pct;
+
+        fetch("/api/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ conf_threshold: parseFloat(val) }),
+        });
+    }
+
+    if (confSlider) {
+        confSlider.addEventListener("input", (e) => handleConfChange(e.target.value));
+    }
+    if (deckConfSlider) {
+        deckConfSlider.addEventListener("input", (e) => handleConfChange(e.target.value));
+    }
+
+    // Human FP Checkbox
+    if (chkHumanFP) {
+        chkHumanFP.addEventListener("change", (e) => {
+            fetch("/api/config", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ suppress_human_fp: e.target.checked }),
             });
-            if (resp.ok) {
-                const data = await resp.json();
-                if (payload.weights_path) {
-                    activeModelBadge.innerHTML = `Model: <strong>${payload.weights_path.split(/[\\/]/).pop()}</strong>`;
-                }
+            showToast(`Human False-Positive Suppression: ${e.target.checked ? "ENABLED" : "DISABLED"}`);
+        });
+    }
+
+    // Manual Count Override Toggle
+    if (chkManualOverride) {
+        chkManualOverride.addEventListener("change", (e) => {
+            isManualOverride = e.target.checked;
+            if (manualCountRow) {
+                if (isManualOverride) manualCountRow.classList.remove("hidden");
+                else manualCountRow.classList.add("hidden");
             }
-        } catch (e) {
-            console.error("Failed to update config:", e);
+            recalcRisk();
+            showToast(`Manual Rodent Count Override: ${isManualOverride ? "ON" : "OFF"}`);
+        });
+    }
+
+    if (manualCountInput) {
+        manualCountInput.addEventListener("input", (e) => {
+            manualCount = parseInt(e.target.value) || 0;
+            recalcRisk();
+        });
+    }
+
+    // --- Input Source Tab Switching ---
+    function updateSourceTab(type) {
+        [btnSourceWebcam, btnSourceIpCam, btnSourceVideoFile].forEach(btn => {
+            if (btn) btn.classList.remove("active");
+        });
+        [webcamRow, ipCamRow, videoFileRow].forEach(row => {
+            if (row) row.classList.add("hidden");
+        });
+
+        if (type === "webcam") {
+            if (btnSourceWebcam) btnSourceWebcam.classList.add("active");
+            if (webcamRow) webcamRow.classList.remove("hidden");
+        } else if (type === "ip_cam") {
+            if (btnSourceIpCam) btnSourceIpCam.classList.add("active");
+            if (ipCamRow) ipCamRow.classList.remove("hidden");
+        } else if (type === "video_file") {
+            if (btnSourceVideoFile) btnSourceVideoFile.classList.add("active");
+            if (videoFileRow) videoFileRow.classList.remove("hidden");
         }
     }
 
-    // Video File Upload
-    btnUploadVideo.addEventListener("click", async () => {
-        const file = videoFileInput.files[0];
-        if (!file) {
-            videoUploadStatus.textContent = "❌ Please select a video file first.";
-            videoUploadStatus.style.color = "#ef4444";
-            return;
-        }
+    if (btnSourceWebcam) {
+        btnSourceWebcam.addEventListener("click", () => {
+            updateSourceTab("webcam");
+            setPowerState(true);
+            fetch("/api/config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ source_type: "webcam", camera_index: parseInt(webcamIndex ? webcamIndex.value : 0) }),
+            });
+            showToast("Switched source to Local Webcam");
+        });
+    }
 
-        videoUploadStatus.textContent = "⏳ Uploading video file...";
-        videoUploadStatus.style.color = "#38bdf8";
+    if (btnSourceIpCam) {
+        btnSourceIpCam.addEventListener("click", () => {
+            updateSourceTab("ip_cam");
+        });
+    }
 
+    if (btnSourceVideoFile) {
+        btnSourceVideoFile.addEventListener("click", () => {
+            updateSourceTab("video_file");
+        });
+    }
+
+    if (webcamIndex) {
+        webcamIndex.addEventListener("change", (e) => {
+            fetch("/api/config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ source_type: "webcam", camera_index: parseInt(e.target.value) }),
+            });
+            showToast(`Selected Webcam Index ${e.target.value}`);
+        });
+    }
+
+    if (btnApplyIpCam && ipCamUrl) {
+        btnApplyIpCam.addEventListener("click", async () => {
+            const url = ipCamUrl.value.trim();
+            if (!url) return;
+            setPowerState(true);
+            await fetch("/api/config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ source_type: "ip_cam", camera_url: url }),
+            });
+            showToast(`Connecting to IP Camera stream...`);
+        });
+    }
+
+    async function uploadAndPinVideo(file) {
+        if (!file) return;
         const formData = new FormData();
         formData.append("file", file);
 
+        showToast(`Uploading field video: ${file.name}...`, "info");
         try {
-            const resp = await fetch("/api/upload_video", {
-                method: "POST",
-                body: formData
-            });
+            const resp = await fetch("/api/upload_video", { method: "POST", body: formData });
+            if (resp.ok) {
+                const res = await resp.json();
+                setPowerState(true);
+                showToast(`Video stream active: ${res.filename}`);
 
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const res = await resp.json();
-
-            videoUploadStatus.textContent = `✅ Playing: ${res.filename}`;
-            videoUploadStatus.style.color = "#10b981";
-            setPowerState(true);
-            updateSourceTab("video_file");
-        } catch (e) {
-            console.error("Upload error:", e);
-            videoUploadStatus.textContent = `❌ Upload failed: ${e.message}`;
-            videoUploadStatus.style.color = "#ef4444";
-        }
-    });
-
-    // Poll Stats & Update Vision HUD
-    async function fetchStats() {
-        try {
-            const resp = await fetch("/api/stats");
-            if (!resp.ok) return;
-            const stats = await resp.json();
-            currentStats = stats;
-
-            const activeCount = isManualOverride ? manualCount : stats.current_count;
-            rodentCountVal.textContent = activeCount;
-            rodentPeakVal.textContent = `Peak: ${stats.max_session_count}`;
-            fpsCounter.textContent = `FPS: ${stats.fps || "--"}`;
-
-            if (!isPowerOn) {
-                videoOverlayBadge.style.borderColor = "rgba(100, 116, 139, 0.4)";
-                videoOverlayText.textContent = "CAMERA POWERED OFF";
-            } else if (activeCount > 0) {
-                videoOverlayBadge.style.borderColor = "rgba(239, 68, 68, 0.8)";
-                videoOverlayText.textContent = `RODENTS DETECTED: ${activeCount}`;
+                if (res.node) {
+                    showToast(`📍 New Dynamic Node Pin generated on Heatmap: ${res.node.name}!`, "info");
+                }
+                fetchNodes(waterLevelPct); // Refresh map nodes and heatmap immediately!
             } else {
-                videoOverlayBadge.style.borderColor = "rgba(16, 185, 129, 0.4)";
-                videoOverlayText.textContent = `LIVE STREAMING (0 DETECTED)`;
+                const errText = await resp.text();
+                showToast(`Upload failed (HTTP ${resp.status}): ${errText.substring(0, 80)}`, "error");
             }
-
-            recalculateRisk();
-        } catch (e) {
-            console.error("Error fetching stats:", e);
+        } catch (err) {
+            showToast(`Video upload failed: ${err.message}`, "error");
         }
     }
 
-    // Recalculate Risk Score
-    async function recalculateRisk() {
-        const payload = {
-            rodent_count: currentStats.current_count,
-            rainfall_mm: rainfallMm,
-            water_level: waterLevelScore,
-            historical_risk: historicalRiskScore,
-            manual_override: isManualOverride,
-            manual_count: manualCount
-        };
+    if (videoFileInput) {
+        videoFileInput.addEventListener("change", (e) => {
+            if (e.target.files[0]) uploadAndPinVideo(e.target.files[0]);
+        });
+    }
 
+    if (btnUploadVideo) {
+        btnUploadVideo.addEventListener("click", () => {
+            if (videoFileInput && videoFileInput.files[0]) {
+                uploadAndPinVideo(videoFileInput.files[0]);
+            } else {
+                showToast("Please choose a video file first", "warning");
+            }
+        });
+    }
+
+    if (modelWeightsSelect) {
+        modelWeightsSelect.addEventListener("change", (e) => {
+            const path = e.target.value;
+            const modelName = path.split(/[\\/]/).pop();
+            if (headerModelTag) headerModelTag.textContent = modelName;
+            fetch("/api/config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ weights_path: path }),
+            });
+            showToast(`Loaded Model: ${modelName}`);
+        });
+    }
+
+    // --- Weather Sync ---
+    async function fetchWeather() {
+        if (weatherSyncStatus) weatherSyncStatus.textContent = "Syncing...";
+        try {
+            const resp = await fetch("/api/weather?location=kuala_lumpur");
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            rainfallMm = data.rainfall_mm !== undefined ? data.rainfall_mm : 0.1;
+            if (rainfallVal) rainfallVal.textContent = rainfallMm.toFixed(1);
+
+            if (weatherTemp) weatherTemp.textContent = (data.temperature_c || 34.5).toFixed(1);
+            if (weatherCond) weatherCond.textContent = data.condition || "Partly cloudy";
+            if (weatherIcon) weatherIcon.textContent = data.condition_icon || "🌤️";
+            if (weatherHumidity) weatherHumidity.textContent = `${data.humidity_pct || 62}%`;
+            if (weatherWind) weatherWind.textContent = `${data.wind_kmh || 9} km/h`;
+
+            if (weatherSyncStatus) weatherSyncStatus.textContent = "Auto-sync: 5m";
+            recalcRisk();
+            fetchNodes(waterLevelPct);
+        } catch (e) {
+            console.error("Weather sync failed:", e);
+            if (weatherSyncStatus) weatherSyncStatus.textContent = "Sync failed";
+        }
+    }
+
+    if (btnRefreshWeather) {
+        btnRefreshWeather.addEventListener("click", () => {
+            fetchWeather();
+            showToast("Syncing real-time weather from Open-Meteo API...");
+        });
+    }
+
+    // --- Risk Recalculation ---
+    async function recalcRisk() {
+        const count = isManualOverride ? manualCount : currentStats.current_count;
         try {
             const resp = await fetch("/api/risk", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({
+                    rodent_count: count,
+                    rainfall_mm: rainfallMm,
+                    water_level: waterLevelPct,
+                    historical_risk: historicalRiskScore,
+                    manual_override: isManualOverride,
+                    manual_count: manualCount,
+                }),
             });
             if (!resp.ok) return;
-            const res = await resp.json();
-
-            riskScoreVal.textContent = res.score;
-            gaugeFill.style.width = `${res.score}%`;
-
-            gaugeFill.className = "gauge-fill";
-            riskLevelBadge.className = "risk-badge";
-            const levelUpper = res.level.toUpperCase();
-            riskLevelBadge.textContent = levelUpper;
-
-            if (res.level === "Low") {
-                gaugeFill.classList.add("fill-low");
-                riskLevelBadge.classList.add("badge-low");
-            } else if (res.level === "Moderate") {
-                gaugeFill.classList.add("fill-moderate");
-                riskLevelBadge.classList.add("badge-moderate");
-            } else if (res.level === "High") {
-                gaugeFill.classList.add("fill-high");
-                riskLevelBadge.classList.add("badge-high");
-            } else {
-                gaugeFill.classList.add("fill-critical");
-                riskLevelBadge.classList.add("badge-critical");
-            }
-
-            expRodent.textContent = `${res.rodent_index}/100`;
-            expRain.textContent = `${res.rainfall_index}/100`;
-            expWaterLevel.textContent = `${res.water_level_index}/100`;
-            expHist.textContent = `${res.historical_index}/100`;
-
-            if (res.synergy_boost) {
-                synergyBanner.classList.remove("hidden");
-            } else {
-                synergyBanner.classList.add("hidden");
-            }
-
-            municipalActionText.textContent = res.municipal_action;
-            citizenActionText.textContent = res.citizen_action;
-
-        } catch (e) {
-            console.error("Error recalculating risk:", e);
-        }
-    }
-
-    // Weather Sync
-    async function syncWeather() {
-        btnRefreshWeather.textContent = "⏳ Syncing...";
-        const locKey = weatherLocationSelect ? weatherLocationSelect.value : "kuala_lumpur";
-        try {
-            const resp = await fetch(`/api/weather?location=${encodeURIComponent(locKey)}`);
             const data = await resp.json();
-            if (data.rainfall_mm !== undefined) {
-                rainfallMm = data.rainfall_mm;
-                rainfallVal.textContent = rainfallMm.toFixed(1);
 
-                if (weatherTempBadge && data.temperature_c !== undefined) {
-                    weatherTempBadge.textContent = `🌤️ ${data.temperature_c.toFixed(1)}°C`;
-                    weatherTempBadge.title = `Humidity: ${data.humidity_pct}% | Rain: ${data.current_rain_mm} mm`;
-                }
-
-                // Auto-suggest and update the water level (1mm rain = 5% water level)
-                waterLevelScore = Math.min(100, Math.round(rainfallMm * 5.0));
-                waterLevelSlider.value = waterLevelScore;
-                waterLevelValText.textContent = `${waterLevelScore}/100`;
-
-                recalculateRisk();
+            if (riskScoreVal) riskScoreVal.textContent = data.score;
+            if (riskLevelBadge) {
+                riskLevelBadge.textContent = data.level;
+                riskLevelBadge.className = `risk-pill pill-${data.level.toLowerCase().substring(0, 4)}`;
             }
+
+            updateSparkline(data.score, data.level);
+
+            if (municipalActionText) municipalActionText.textContent = data.municipal_action;
+            if (citizenActionText) citizenActionText.textContent = data.citizen_action;
         } catch (e) {
-            console.error("Weather sync failed:", e);
-        } finally {
-            btnRefreshWeather.textContent = "🔄 Sync";
+            console.error("Risk calculation error:", e);
         }
     }
 
-    // Event Listeners
-    waterLevelSlider.addEventListener("input", (e) => {
-        waterLevelScore = parseFloat(e.target.value);
-        waterLevelValText.textContent = `${waterLevelScore.toFixed(0)}/100`;
-        recalculateRisk();
-    });
-
-    confSlider.addEventListener("change", (e) => {
-        const val = parseFloat(e.target.value);
-        confValText.textContent = `${Math.round(val * 100)}%`;
-        updateBackendConfig({ conf_threshold: val });
-    });
-
-    chkHumanFP.addEventListener("change", (e) => {
-        updateBackendConfig({ suppress_human_fp: e.target.checked });
-    });
-
-    modelWeightsSelect.addEventListener("change", (e) => {
-        updateBackendConfig({ weights_path: e.target.value });
-    });
-
-    // Camera source toggles
-    btnSourceWebcam.addEventListener("click", () => {
-        setPowerState(true);
-        updateSourceTab("webcam");
-        updateBackendConfig({ source_type: "webcam", camera_index: parseInt(webcamIndexSelect.value) });
-    });
-
-    btnSourceIpCam.addEventListener("click", () => {
-        setPowerState(true);
-        updateSourceTab("ip_cam");
-    });
-
-    btnSourceVideoFile.addEventListener("click", () => {
-        setPowerState(true);
-        updateSourceTab("video_file");
-    });
-
-    webcamIndexSelect.addEventListener("change", (e) => {
-        updateBackendConfig({ source_type: "webcam", camera_index: parseInt(e.target.value) });
-    });
-
-    btnApplyIpCam.addEventListener("click", () => {
-        const url = ipCamUrlInput.value.trim();
-        if (url) {
-            updateBackendConfig({ source_type: "ip_cam", camera_url: url });
-        }
-    });
-
-    // Manual Override
-    chkManualOverride.addEventListener("change", (e) => {
-        isManualOverride = e.target.checked;
-        if (isManualOverride) {
-            manualCountRow.classList.remove("hidden");
-        } else {
-            manualCountRow.classList.add("hidden");
-        }
-        recalculateRisk();
-    });
-
-    manualCountInput.addEventListener("input", (e) => {
-        manualCount = parseInt(e.target.value) || 0;
-        recalculateRisk();
-    });
-
-    btnRefreshWeather.addEventListener("click", syncWeather);
-    if (weatherLocationSelect) {
-        weatherLocationSelect.addEventListener("change", syncWeather);
-    }
-
-    // Auto-refresh weather every 5 minutes (300,000 ms)
-    setInterval(syncWeather, 300000);
-    // Initial weather sync on load
-    syncWeather();
-    // PDF Report — Handled by standalone /static/pdf_report.js
-
-    // Tab Navigation & Geospatial Map Logic
-    const tabBtnVision = document.getElementById("tabBtnVision");
-    const tabBtnMap = document.getElementById("tabBtnMap");
-    const tabViewVision = document.getElementById("tabViewVision");
-    const tabViewMap = document.getElementById("tabViewMap");
-
-    let leafletMap = null;
-    let mapMarkers = [];
-
-    tabBtnVision.addEventListener("click", () => {
-        tabBtnVision.classList.add("active");
-        tabBtnMap.classList.remove("active");
-        tabViewVision.classList.remove("hidden");
-        tabViewMap.classList.add("hidden");
-    });
-
-    tabBtnMap.addEventListener("click", () => {
-        tabBtnMap.classList.add("active");
-        tabBtnVision.classList.remove("active");
-        tabViewMap.classList.remove("hidden");
-        tabViewVision.classList.add("hidden");
-
-        if (!leafletMap) {
-            initLeafletMap();
-        } else {
-            setTimeout(() => leafletMap.invalidateSize(), 200);
-        }
-        loadNodesData();
-    });
-
-    function getBadgeClass(level) {
-        if (level === "Critical") return "badge-critical";
-        if (level === "High") return "badge-high";
-        if (level === "Moderate") return "badge-moderate";
-        return "badge-low";
-    }
-
-    function getMarkerColor(level) {
-        if (level === "Critical") return "#ef4444";
-        if (level === "High") return "#f97316";
-        if (level === "Moderate") return "#f59e0b";
-        return "#10b981";
-    }
-
-    function initLeafletMap() {
-        if (typeof L === "undefined") return;
-        
-        // Center on Kuala Lumpur
-        leafletMap = L.map("nodeMap").setView([3.1390, 101.6869], 13);
-
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-            maxZoom: 18,
-        }).addTo(leafletMap);
-    }
-
-    async function loadNodesData() {
+    let lastPolledRodentCount = -1;
+    // --- Live Stats Polling (every 500ms) ---
+    async function pollStats() {
         try {
-            const resp = await fetch("/api/nodes");
+            const resp = await fetch("/api/stats");
             if (!resp.ok) return;
             const data = await resp.json();
-            if (!data.nodes) return;
 
-            const nodes = data.nodes;
-            
-            // Update Summary KPI Bar
-            document.getElementById("totalNodesCount").textContent = nodes.length;
-            const criticalCount = nodes.filter(n => n.risk_level === "Critical").length;
-            const highCount = nodes.filter(n => n.risk_level === "High").length;
-            const avgScore = Math.round(nodes.reduce((acc, n) => acc + n.lers_score, 0) / nodes.length);
+            currentStats = data;
+            lastStatsUpdateTime = Date.now();
 
-            document.getElementById("criticalNodesCount").textContent = criticalCount;
-            document.getElementById("highNodesCount").textContent = highCount;
-            document.getElementById("avgLersScore").textContent = avgScore;
+            if (rodentCountVal) rodentCountVal.textContent = data.current_count;
+            if (detTodayCount) detTodayCount.textContent = data.current_count;
+            if (rodentPeakVal) rodentPeakVal.textContent = `Peak: ${data.max_session_count} (Today)`;
+            if (detPeakSub) detPeakSub.textContent = `Peak: ${data.max_session_count}`;
+            if (fpsCounter) fpsCounter.textContent = `FPS: ${data.fps.toFixed(1)}`;
 
-            // Clear old markers
-            mapMarkers.forEach(m => leafletMap.removeLayer(m));
-            mapMarkers = [];
+            if (sysLastUpdated) {
+                sysLastUpdated.textContent = "Just now";
+            }
 
-            // Populate Table & Map Markers
-            const tbody = document.getElementById("nodeTableBody");
-            tbody.innerHTML = "";
+            recalcRisk();
 
-            nodes.forEach(node => {
-                const color = getMarkerColor(node.risk_level);
-                
-                // Circle Marker
-                const circle = L.circleMarker([node.latitude, node.longitude], {
-                    color: color,
-                    fillColor: color,
-                    fillOpacity: 0.8,
-                    radius: 10
-                }).addTo(leafletMap);
+            // Auto-sync map nodes if rodent count changed
+            if (data.current_count !== lastPolledRodentCount) {
+                lastPolledRodentCount = data.current_count;
+                fetchNodes();
+            }
+        } catch (e) {
+            // Server might be reloading
+        }
+    }
 
-                const popupContent = `
-                    <div class="popup-node-card">
-                        <h4>📍 ${node.name} (${node.id})</h4>
-                        <div class="popup-metrics">
-                            <div><span>LERS Score:</span> <strong>${node.lers_score}/100 (${node.risk_level})</strong></div>
-                            <div><span>Rodents Detected:</span> <strong>${node.rodent_count}</strong></div>
-                            <div><span>Water Level:</span> <strong>${node.water_level_pct}%</strong></div>
-                            <div><span>Rainfall:</span> <strong>${node.rainfall_mm} mm</strong></div>
-                        </div>
-                        <div style="font-size:0.75rem; color:#94a3b8; border-top:1px solid #334155; padding-top:0.3rem;">
-                            <strong>Municipal Action:</strong> ${node.municipal_action}
+    // --- Leaflet Geospatial Map Initialization ---
+    function initMap() {
+        const mapContainer = document.getElementById("nodeMap");
+        if (!mapContainer) return;
+
+        // Kuala Lumpur coordinates center
+        map = L.map("nodeMap", {
+            zoomControl: false,
+            attributionControl: false
+        }).setView([3.1450, 101.6950], 13);
+
+        // CartoDB Dark Matter Tiles for high-tech aesthetic
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+            maxZoom: 19,
+            subdomains: "abcd",
+        }).addTo(map);
+
+        // Add sleek zoom control on top-left
+        L.control.zoom({ position: "topleft" }).addTo(map);
+
+        fetchNodes();
+    }
+
+    // --- Reset Map Nodes to Core Baseline ---
+    const btnResetMapNodes = document.getElementById("btnResetMapNodes");
+    if (btnResetMapNodes) {
+        btnResetMapNodes.addEventListener("click", async () => {
+            try {
+                const wLvl = waterLevelPct !== undefined ? waterLevelPct : 85;
+                const url = `/api/nodes/reset?water_level=${wLvl}&rainfall=${rainfallMm}`;
+                const resp = await fetch(url, { method: "POST" });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    nodesData = data.nodes || [];
+                    renderMapNodes(nodesData);
+                    renderRankedList(nodesData);
+                    showToast("🧹 Map reset to 5 core baseline monitoring stations.");
+                }
+            } catch (e) {
+                console.error("Reset nodes error:", e);
+            }
+        });
+    }
+
+    // --- Fetch & Render Geospatial Nodes ---
+    async function fetchNodes(waterLevelOverride) {
+        try {
+            const wLvl = waterLevelOverride !== undefined ? waterLevelOverride : waterLevelPct;
+            const url = `/api/nodes?water_level=${wLvl}&rainfall=${rainfallMm}`;
+            const resp = await fetch(url);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            nodesData = data.nodes || [];
+
+            // Calculate citywide average LERS
+            if (nodesData.length > 0) {
+                const avg = Math.round(nodesData.reduce((acc, n) => acc + n.lers_score, 0) / nodesData.length);
+                if (avgLersScore) avgLersScore.textContent = avg;
+            }
+
+            renderMapNodes(nodesData);
+            renderRankedList(nodesData);
+        } catch (e) {
+            console.error("Nodes fetch error:", e);
+        }
+    }
+
+    let activeOpenPopupNodeId = null;
+
+    function renderMapNodes(nodes) {
+        if (!map) return;
+
+        // Clear existing markers
+        mapMarkers.forEach(m => map.removeLayer(m));
+        mapHeatCircles.forEach(c => map.removeLayer(c));
+        mapMarkers = [];
+        mapHeatCircles = [];
+
+        let activeMarkerToOpen = null;
+
+        nodes.forEach(node => {
+            const lat = node.latitude !== undefined ? node.latitude : node.lat;
+            const lon = node.longitude !== undefined ? node.longitude : node.lon;
+            if (lat === undefined || lon === undefined) return;
+
+            const score = node.lers_score !== undefined ? node.lers_score : 0;
+            const lvlUpper = (node.risk_level || "").toUpperCase();
+
+            let markerClass = "marker-low";
+            let heatColor = "#10b981";
+            let heatRadius = 550;
+            let heatOpacity = 0.20;
+
+            if (lvlUpper === "CRITICAL" || score >= 80) {
+                markerClass = "marker-crit";
+                heatColor = "#ef4444";
+                heatRadius = 950;
+                heatOpacity = 0.45;
+            } else if (lvlUpper === "HIGH" || score >= 60) {
+                markerClass = "marker-high";
+                heatColor = "#f97316";
+                heatRadius = 800;
+                heatOpacity = 0.35;
+            } else if (lvlUpper === "MODERATE" || score >= 35) {
+                markerClass = "marker-mod";
+                heatColor = "#f59e0b";
+                heatRadius = 650;
+                heatOpacity = 0.28;
+            }
+
+            // Inner Core Heat Circle
+            const innerHeatCircle = L.circle([lat, lon], {
+                radius: Math.round(heatRadius * 0.45),
+                fillColor: heatColor,
+                fillOpacity: Math.min(0.65, heatOpacity * 1.5),
+                stroke: false,
+            }).addTo(map);
+
+            // Outer Heat Halo Circle
+            const outerHeatCircle = L.circle([lat, lon], {
+                radius: heatRadius,
+                fillColor: heatColor,
+                fillOpacity: heatOpacity,
+                stroke: false,
+            }).addTo(map);
+
+            mapHeatCircles.push(innerHeatCircle);
+            mapHeatCircles.push(outerHeatCircle);
+
+            // Custom HTML Bubble Marker with Score
+            const iconHtml = `<div class="lers-map-marker ${markerClass}" style="width: 34px; height: 34px;">${score}</div>`;
+            const customIcon = L.divIcon({
+                html: iconHtml,
+                className: "custom-map-icon",
+                iconSize: [34, 34],
+                iconAnchor: [17, 17],
+            });
+
+            const marker = L.marker([lat, lon], { icon: customIcon }).addTo(map);
+
+            const popupContent = `
+                <div style="font-family: 'Outfit', sans-serif; font-size: 0.82rem; color: #f8fafc; padding: 4px;">
+                    <div style="font-weight: 700; font-size: 0.95rem; color: #38bdf8; margin-bottom: 2px;">${node.name}</div>
+                    <div style="font-size: 0.74rem; color: #94a3b8; margin-bottom: 8px;">Station ID: ${node.id}</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-family: 'JetBrains Mono', monospace; font-size: 0.76rem;">
+                        <div><span style="color: #64748b;">🌧️ Rain:</span> <strong style="color: #f8fafc;">${node.rainfall_mm}mm</strong></div>
+                        <div><span style="color: #64748b;">⏱️ Level:</span> <strong style="color: #f8fafc;">${node.water_level_pct}%</strong></div>
+                        <div><span style="color: #64748b;">🐀 Rodents:</span> <strong style="color: #ef4444;">${node.rodent_count}</strong></div>
+                        <div><span style="color: #64748b;">📊 LERS:</span> <strong style="color: #38bdf8;">${score}/100</strong></div>
+                    </div>
+                </div>
+            `;
+            marker.bindPopup(popupContent);
+
+            marker.on("popupopen", () => {
+                activeOpenPopupNodeId = node.id;
+            });
+            marker.on("popupclose", () => {
+                if (activeOpenPopupNodeId === node.id) {
+                    activeOpenPopupNodeId = null;
+                }
+            });
+
+            if (activeOpenPopupNodeId === node.id) {
+                activeMarkerToOpen = marker;
+            }
+
+            mapMarkers.push(marker);
+            node._markerRef = marker;
+        });
+
+        if (activeMarkerToOpen) {
+            activeMarkerToOpen.openPopup();
+        }
+    }
+
+    // Toggle Heatmap Layer Visibility
+    if (chkHeatmap) {
+        chkHeatmap.addEventListener("change", (e) => {
+            mapHeatCircles.forEach(circle => {
+                if (e.target.checked) map.addLayer(circle);
+                else map.removeLayer(circle);
+            });
+        });
+    }
+
+    // --- Render Ranked Critical Nodes List (Right Column) ---
+    function renderRankedList(nodes) {
+        if (!rankedNodesList) return;
+        rankedNodesList.innerHTML = "";
+
+        nodes.forEach((node, idx) => {
+            const rank = idx + 1;
+            const score = node.lers_score !== undefined ? node.lers_score : 0;
+            const lvlUpper = (node.risk_level || "").toUpperCase();
+
+            let rankClass = "rank-low";
+            let pillClass = "pill-low";
+            if (lvlUpper === "CRITICAL" || score >= 80) { rankClass = "rank-crit"; pillClass = "pill-crit"; }
+            else if (lvlUpper === "HIGH" || score >= 60) { rankClass = "rank-high"; pillClass = "pill-high"; }
+            else if (lvlUpper === "MODERATE" || score >= 35) { rankClass = "rank-mod"; pillClass = "pill-mod"; }
+
+            const item = document.createElement("div");
+            item.className = "ranked-node-item";
+            item.innerHTML = `
+                <div class="node-left-col">
+                    <span class="node-rank-badge ${rankClass}">${rank}</span>
+                    <div class="node-info-block">
+                        <span class="node-station-name">${node.name}</span>
+                        <span class="node-station-id">${node.id}</span>
+                        <div class="node-telemetry-row">
+                            <span>🌧️ ${node.rainfall_mm} mm</span>
+                            <span>⏱️ ${node.water_level_pct}%</span>
+                            <span>🐀 ${node.rodent_count}</span>
                         </div>
                     </div>
-                `;
+                </div>
+                <div class="node-right-col">
+                    <div class="node-lers-score ${rankClass}">${score}/100</div>
+                    <span class="node-risk-pill ${pillClass}">${node.risk_level || "LOW"}</span>
+                </div>
+            `;
 
-                circle.bindPopup(popupContent);
-                mapMarkers.push(circle);
-
-                // Table Row
-                const tr = document.createElement("tr");
-                tr.innerHTML = `
-                    <td><code>${node.id}</code></td>
-                    <td><strong>${node.name}</strong></td>
-                    <td>${node.rodent_count}</td>
-                    <td>${node.rainfall_mm} mm</td>
-                    <td>${node.water_level_pct}%</td>
-                    <td><strong>${node.lers_score}/100</strong></td>
-                    <td><span class="risk-badge ${getBadgeClass(node.risk_level)}">${node.risk_level.toUpperCase()}</span></td>
-                    <td><button class="btn-focus">Center Map</button></td>
-                `;
-
-                tr.querySelector(".btn-focus").addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    leafletMap.flyTo([node.latitude, node.longitude], 15, { duration: 1.2 });
-                    circle.openPopup();
-                });
-
-                tr.addEventListener("click", () => {
-                    leafletMap.flyTo([node.latitude, node.longitude], 15, { duration: 1.2 });
-                    circle.openPopup();
-                });
-
-                tbody.appendChild(tr);
+            // Click node to focus on map
+            item.addEventListener("click", () => {
+                if (map && node.latitude && node.longitude) {
+                    map.flyTo([node.latitude, node.longitude], 15, { duration: 1.2 });
+                    if (node._markerRef) {
+                        setTimeout(() => node._markerRef.openPopup(), 1200);
+                    }
+                }
             });
 
-        } catch (e) {
-            console.error("Failed to load node data:", e);
+            rankedNodesList.appendChild(item);
+        });
+    }
+
+    if (btnViewAllNodes) {
+        btnViewAllNodes.addEventListener("click", () => {
+            if (map && nodesData.length > 0) {
+                const group = new L.featureGroup(mapMarkers);
+                map.fitBounds(group.getBounds().pad(0.2));
+                showToast("Fitted view to all monitoring stations.");
+            }
+        });
+    }
+
+    // --- Header Navigation Tab Switcher ---
+    const navPillOverview = document.getElementById("navPillOverview");
+    const navPillAnalytics = document.getElementById("navPillAnalytics");
+    const navPillReports = document.getElementById("navPillReports");
+    const navPillSettings = document.getElementById("navPillSettings");
+
+    const viewOverview = document.getElementById("viewOverview");
+    const viewAnalytics = document.getElementById("viewAnalytics");
+    const viewReports = document.getElementById("viewReports");
+    const viewSettings = document.getElementById("viewSettings");
+
+    const headerNavPills = [navPillOverview, navPillAnalytics, navPillReports, navPillSettings];
+    const headerViews = [viewOverview, viewAnalytics, viewReports, viewSettings];
+
+    function switchHeaderTab(index) {
+        headerNavPills.forEach((pill, idx) => {
+            if (!pill) return;
+            if (idx === index) pill.classList.add("active");
+            else pill.classList.remove("active");
+        });
+
+        headerViews.forEach((v, idx) => {
+            if (!v) return;
+            if (idx === index) {
+                v.classList.remove("hidden");
+                v.classList.add("active");
+            } else {
+                v.classList.add("hidden");
+                v.classList.remove("active");
+            }
+        });
+
+        if (index === 0 && map) {
+            setTimeout(() => map.invalidateSize(), 200);
+        } else if (index === 1) {
+            renderAnalyticsMatrix();
+        } else if (index === 2) {
+            fetchReportsDesk();
         }
     }
 
-    // Init
-    loadConfig();
-    recalculateRisk();
-    setInterval(fetchStats, 500);
+    if (navPillOverview) navPillOverview.addEventListener("click", () => switchHeaderTab(0));
+    if (navPillAnalytics) navPillAnalytics.addEventListener("click", () => switchHeaderTab(1));
+    if (navPillReports) navPillReports.addEventListener("click", () => switchHeaderTab(2));
+    if (navPillSettings) navPillSettings.addEventListener("click", () => switchHeaderTab(3));
+
+    // --- Municipal Reports Management Desk ---
+    let cachedReportsList = [];
+
+    const btnRefreshReportsDesk = document.getElementById("btnRefreshReportsDesk");
+    const reportSearchInput = document.getElementById("reportSearchInput");
+    const reportUrgencyFilter = document.getElementById("reportUrgencyFilter");
+    const repTotalCount = document.getElementById("repTotalCount");
+    const repCritCount = document.getElementById("repCritCount");
+    const repAssignedCount = document.getElementById("repAssignedCount");
+
+    function renderReportsDeskTable(reports) {
+        const tbody = document.getElementById("reportsDeskTbody");
+        if (!tbody) return;
+
+        const query = (reportSearchInput ? reportSearchInput.value : "").trim().toLowerCase();
+        const urgency = reportUrgencyFilter ? reportUrgencyFilter.value : "ALL";
+
+        const filtered = reports.filter(r => {
+            const matchesQuery = !query || 
+                (r.location_name || "").toLowerCase().includes(query) ||
+                (r.description || "").toLowerCase().includes(query) ||
+                (r.id || "").toLowerCase().includes(query) ||
+                (r.reporter_name || "").toLowerCase().includes(query);
+            const matchesUrgency = urgency === "ALL" || (r.risk_level || "").toUpperCase() === urgency;
+            return matchesQuery && matchesUrgency;
+        });
+
+        tbody.innerHTML = "";
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:1.5rem;">No matching municipal reports found</td></tr>`;
+            return;
+        }
+
+        filtered.forEach(r => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td class="font-mono text-cyan" style="font-weight:700;">${r.id}</td>
+                <td style="font-weight:600; color:#f8fafc;">📍 ${r.location_name}</td>
+                <td>${r.reporter_name || 'Resident'}</td>
+                <td><span class="tag-red">${r.rodent_count} Rats (YOLO Tag)</span></td>
+                <td><span class="risk-pill pill-${(r.risk_level || 'high').toLowerCase()}">${r.risk_level}</span></td>
+                <td style="color:#94a3b8; font-size:0.72rem;">${r.timestamp}</td>
+                <td>
+                    <select class="select-status-sleek" data-id="${r.id}">
+                        <option value="Submitted to DBKL" ${r.status.includes('Submitted') ? 'selected' : ''}>Submitted to DBKL</option>
+                        <option value="Work Order Assigned" ${r.status.includes('Assigned') ? 'selected' : ''}>Work Order Assigned</option>
+                        <option value="In Progress" ${r.status.includes('Progress') ? 'selected' : ''}>In Progress</option>
+                        <option value="Resolved" ${r.status.includes('Resolved') ? 'selected' : ''}>Resolved</option>
+                    </select>
+                </td>
+            `;
+            const sel = tr.querySelector("select");
+            if (sel) {
+                sel.addEventListener("change", (e) => {
+                    r.status = e.target.value;
+                    showToast(`Updated ${r.id} status to: ${e.target.value}`, "info");
+                    updateReportSummaryKPIs(cachedReportsList);
+                });
+            }
+            tbody.appendChild(tr);
+        });
+    }
+
+    function updateReportSummaryKPIs(reports) {
+        if (repTotalCount) repTotalCount.textContent = reports.length;
+        if (repCritCount) {
+            const crits = reports.filter(r => (r.risk_level || "").toUpperCase() === "CRITICAL").length;
+            repCritCount.textContent = crits;
+        }
+        if (repAssignedCount) {
+            const assigned = reports.filter(r => r.status && !r.status.includes("Submitted")).length;
+            repAssignedCount.textContent = assigned;
+        }
+    }
+
+    async function fetchReportsDesk() {
+        try {
+            const resp = await fetch("/api/reports");
+            if (!resp.ok) return;
+            const data = await resp.json();
+            cachedReportsList = data.reports || [];
+            updateReportSummaryKPIs(cachedReportsList);
+            renderReportsDeskTable(cachedReportsList);
+        } catch (e) {
+            console.error("Reports desk fetch error:", e);
+        }
+    }
+
+    if (btnRefreshReportsDesk) {
+        btnRefreshReportsDesk.addEventListener("click", () => {
+            fetchReportsDesk();
+            showToast("🔄 Municipal reports feed refreshed");
+        });
+    }
+    if (reportSearchInput) {
+        reportSearchInput.addEventListener("input", () => renderReportsDeskTable(cachedReportsList));
+    }
+    if (reportUrgencyFilter) {
+        reportUrgencyFilter.addEventListener("change", () => renderReportsDeskTable(cachedReportsList));
+    }
+
+    // --- Empirical Analytics Matrix Generator ---
+    function renderAnalyticsMatrix() {
+        const tbody = document.getElementById("anNodeMatrixTbody");
+        if (!tbody || !nodesData || nodesData.length === 0) return;
+
+        tbody.innerHTML = "";
+        nodesData.forEach(n => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td style="font-weight:700; color:#f8fafc;">${n.id} — ${n.name}</td>
+                <td>${n.rodent_index || Math.round(n.rodent_count * 35)} (45%)</td>
+                <td>${Math.round(n.water_level_pct * 0.85)} (30%)</td>
+                <td>${n.rainfall_index || Math.round(n.rainfall_mm * 2.0)} (15%)</td>
+                <td>${Math.round(n.historical_risk * 0.75)} (10%)</td>
+                <td class="font-mono" style="font-weight:800; color:#38bdf8; font-size:0.95rem;">${n.lers_score}</td>
+                <td><span class="risk-pill pill-${(n.risk_level || 'low').toLowerCase()}">${n.risk_level}</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // --- Quick Actions Triggers ---
+    if (btnDeckHealth) {
+        btnDeckHealth.addEventListener("click", async () => {
+            try {
+                showToast("Running complete system diagnostic...", "info");
+                const resp = await fetch("/api/health");
+                const data = await resp.json();
+                showToast(`✅ Health Check OK — Inference: ${data.ai_inference} | Model: ${data.active_model} | FPS: ${data.fps.toFixed(1)}`, "info");
+            } catch (e) {
+                showToast("⚠️ Health diagnostic check failed", "error");
+            }
+        });
+    }
+
+    if (btnDeckCalibrate) {
+        btnDeckCalibrate.addEventListener("click", () => {
+            handleConfChange(0.50);
+            showToast("🎯 Model confidence calibrated to optimal threshold (50%)", "info");
+        });
+    }
+
+    if (btnDeckSnapshot) {
+        btnDeckSnapshot.addEventListener("click", () => {
+            showToast("📸 Capturing annotated stream snapshot...", "info");
+            const link = document.createElement("a");
+            link.href = "/api/snapshot";
+            link.download = "rattus_live_snapshot.jpg";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+    }
+
+    // --- Initialize Application ---
+    async function initApp() {
+        try {
+            await fetch("/api/reset_all", { method: "POST" });
+        } catch (e) {
+            console.error("System reset on refresh error:", e);
+        }
+        await loadConfig();
+        fetchWeather();
+        initMap();
+    }
+
+    initApp();
+
+    // Start Polling Stats Loop
+    setInterval(pollStats, 600);
+    setInterval(fetchWeather, 300000); // 5 min auto weather sync
 });
 
