@@ -544,25 +544,27 @@ document.addEventListener("DOMContentLoaded", () => {
         if (weatherSyncStatus) weatherSyncStatus.textContent = "Syncing...";
         try {
             const resp = await fetch("/api/weather?location=kuala_lumpur");
-            if (!resp.ok) return;
-            const data = await resp.json();
+            if (resp.ok) {
+                const ct = resp.headers.get("content-type") || "";
+                if (ct.includes("application/json")) {
+                    const data = await resp.json();
+                    rainfallMm = data.rainfall_mm !== undefined ? data.rainfall_mm : 0.1;
+                    if (rainfallVal) rainfallVal.textContent = rainfallMm.toFixed(1);
 
-            rainfallMm = data.rainfall_mm !== undefined ? data.rainfall_mm : 0.1;
-            if (rainfallVal) rainfallVal.textContent = rainfallMm.toFixed(1);
-
-            if (weatherTemp) weatherTemp.textContent = (data.temperature_c || 34.5).toFixed(1);
-            if (weatherCond) weatherCond.textContent = data.condition || "Partly cloudy";
-            if (weatherIcon) weatherIcon.textContent = data.condition_icon || "🌤️";
-            if (weatherHumidity) weatherHumidity.textContent = `${data.humidity_pct || 62}%`;
-            if (weatherWind) weatherWind.textContent = `${data.wind_kmh || 9} km/h`;
-
-            if (weatherSyncStatus) weatherSyncStatus.textContent = "Auto-sync: 5m";
-            recalcRisk();
-            fetchNodes(waterLevelPct);
+                    if (weatherTemp) weatherTemp.textContent = (data.temperature_c || 34.5).toFixed(1);
+                    if (weatherCond) weatherCond.textContent = data.condition || "Partly cloudy";
+                    if (weatherIcon) weatherIcon.textContent = data.condition_icon || "🌤️";
+                    if (weatherHumidity) weatherHumidity.textContent = `${data.humidity_pct || 62}%`;
+                    if (weatherWind) weatherWind.textContent = `${data.wind_kmh || 9} km/h`;
+                    if (weatherSyncStatus) weatherSyncStatus.textContent = "Auto-sync: 5m";
+                }
+            }
         } catch (e) {
             console.error("Weather sync failed:", e);
             if (weatherSyncStatus) weatherSyncStatus.textContent = "Sync failed";
         }
+        recalcRisk();
+        fetchNodes(waterLevelPct);
     }
 
     if (btnRefreshWeather) {
@@ -575,6 +577,18 @@ document.addEventListener("DOMContentLoaded", () => {
     // --- Risk Recalculation ---
     async function recalcRisk() {
         const count = isManualOverride ? manualCount : currentStats.current_count;
+        let score = Math.min(100, Math.round(
+            Math.min(100, count * 35) * 0.45 +
+            (waterLevelPct * 0.85) * 0.30 +
+            Math.min(100, rainfallMm * 2.0) * 0.15 +
+            (historicalRiskScore * 0.75) * 0.10 +
+            (count > 0 && rainfallMm >= 20 && waterLevelPct >= 70 ? 5 : 0)
+        ));
+        let level = "LOW";
+        if (score >= 80) level = "CRITICAL";
+        else if (score >= 60) level = "HIGH";
+        else if (score >= 35) level = "MODERATE";
+
         try {
             const resp = await fetch("/api/risk", {
                 method: "POST",
@@ -588,22 +602,26 @@ document.addEventListener("DOMContentLoaded", () => {
                     manual_count: manualCount,
                 }),
             });
-            if (!resp.ok) return;
-            const data = await resp.json();
-
-            if (riskScoreVal) riskScoreVal.textContent = data.score;
-            if (riskLevelBadge) {
-                riskLevelBadge.textContent = data.level;
-                riskLevelBadge.className = `risk-pill pill-${data.level.toLowerCase().substring(0, 4)}`;
+            if (resp.ok) {
+                const ct = resp.headers.get("content-type") || "";
+                if (ct.includes("application/json")) {
+                    const data = await resp.json();
+                    if (data.score !== undefined) score = data.score;
+                    if (data.level) level = data.level.toUpperCase();
+                    if (municipalActionText && data.municipal_action) municipalActionText.textContent = data.municipal_action;
+                    if (citizenActionText && data.citizen_action) citizenActionText.textContent = data.citizen_action;
+                }
             }
-
-            updateSparkline(data.score, data.level);
-
-            if (municipalActionText) municipalActionText.textContent = data.municipal_action;
-            if (citizenActionText) citizenActionText.textContent = data.citizen_action;
         } catch (e) {
             console.error("Risk calculation error:", e);
         }
+
+        if (riskScoreVal) riskScoreVal.textContent = score;
+        if (riskLevelBadge) {
+            riskLevelBadge.textContent = level;
+            riskLevelBadge.className = `risk-pill pill-${level.toLowerCase().substring(0, 4)}`;
+        }
+        updateSparkline(score, level);
     }
 
     let lastPolledRodentCount = -1;
@@ -611,30 +629,33 @@ document.addEventListener("DOMContentLoaded", () => {
     async function pollStats() {
         try {
             const resp = await fetch("/api/stats");
-            if (!resp.ok) return;
-            const data = await resp.json();
+            if (resp.ok) {
+                const ct = resp.headers.get("content-type") || "";
+                if (ct.includes("application/json")) {
+                    const data = await resp.json();
+                    currentStats = data;
+                    lastStatsUpdateTime = Date.now();
 
-            currentStats = data;
-            lastStatsUpdateTime = Date.now();
+                    if (!document.getElementById("uploadedVideoPlayer")) {
+                        if (rodentCountVal) rodentCountVal.textContent = data.current_count;
+                        if (detTodayCount) detTodayCount.textContent = data.current_count;
+                        if (rodentPeakVal) rodentPeakVal.textContent = `Peak: ${data.max_session_count} (Today)`;
+                        if (detPeakSub) detPeakSub.textContent = `Peak: ${data.max_session_count}`;
+                        if (fpsCounter) fpsCounter.textContent = `FPS: ${data.fps.toFixed(1)}`;
+                    }
 
-            if (!document.getElementById("uploadedVideoPlayer")) {
-                if (rodentCountVal) rodentCountVal.textContent = data.current_count;
-                if (detTodayCount) detTodayCount.textContent = data.current_count;
-                if (rodentPeakVal) rodentPeakVal.textContent = `Peak: ${data.max_session_count} (Today)`;
-                if (detPeakSub) detPeakSub.textContent = `Peak: ${data.max_session_count}`;
-                if (fpsCounter) fpsCounter.textContent = `FPS: ${data.fps.toFixed(1)}`;
-            }
+                    if (sysLastUpdated) {
+                        sysLastUpdated.textContent = "Just now";
+                    }
 
-            if (sysLastUpdated) {
-                sysLastUpdated.textContent = "Just now";
-            }
+                    recalcRisk();
 
-            recalcRisk();
-
-            // Auto-sync map nodes if rodent count changed
-            if (data.current_count !== lastPolledRodentCount) {
-                lastPolledRodentCount = data.current_count;
-                fetchNodes();
+                    // Auto-sync map nodes if rodent count changed
+                    if (data.current_count !== lastPolledRodentCount) {
+                        lastPolledRodentCount = data.current_count;
+                        fetchNodes();
+                    }
+                }
             }
         } catch (e) {
             // Server might be reloading
