@@ -1,0 +1,21 @@
+# Ignore Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+
+# Ignore Heavy Training Data & Weights
+rat-dataset/
+hard_negatives/
+runs/
+uploads/*
+!uploads/.gitkeep
+tools/
+*.log
+
+# Ignore IDE & Git
+.git/
+.vscode/
+.idea/

@@ -75,6 +75,18 @@ python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload
 Open your browser and navigate to:
 👉 **`http://localhost:8000`**
 
+### 5. Deployment Options
+
+#### 🟢 Recommended: Render.com / Railway.app / Hugging Face Spaces (Full PyTorch & OpenCV support)
+Because PyTorch (`torch`) + Ultralytics YOLO dependencies exceed 5 GB, full real-time computer vision inference is best hosted on container platforms:
+- **Render.com**: Create a **Web Service**, connect repository, set Start Command to `uvicorn server:app --host 0.0.0.0 --port $PORT`.
+- **Railway.app**: Connect repo and select Python Web Service.
+
+#### ⚡ Vercel Deployment (Serverless API & Dashboard)
+Vercel Serverless Functions enforce a **500MB function size limit**.
+- Added [.vercelignore](file:///c:/Users/User/ActionHackathonYoloV8/.vercelignore) and [vercel.json](file:///c:/Users/User/ActionHackathonYoloV8/vercel.json).
+- To deploy to Vercel without exceeding limits, rename `requirements-vercel.txt` to `requirements.txt` on your Vercel deployment branch (which omits heavy local C++ PyTorch binaries).
+
 ---
 
 ## 📡 API Endpoints

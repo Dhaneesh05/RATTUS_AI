@@ -11,14 +11,22 @@ from typing import Generator, Optional, Tuple, List, Set, Dict, Any
 
 import cv2
 import numpy as np
-import torch
-from ultralytics import YOLO
 
-# Set PyTorch thread count for optimal CPU performance
+HAS_YOLO = False
+torch = None
+YOLO = None
+
 try:
-    torch.set_num_threads(min(4, os.cpu_count() or 4))
-except Exception:
-    pass
+    import torch
+    from ultralytics import YOLO
+    HAS_YOLO = True
+    try:
+        torch.set_num_threads(min(4, os.cpu_count() or 4))
+    except Exception:
+        pass
+except Exception as _err:
+    print(f"[VisionEngine Warning] PyTorch/YOLO not loaded: {_err}")
+
 
 RODENT_LABEL_HINTS = {"rat", "mouse", "mice", "rodent", "squirrel"}
 
@@ -224,6 +232,8 @@ class VisionEngine:
         self.load_coco_person_model()
 
     def load_coco_person_model(self):
+        if not HAS_YOLO or YOLO is None:
+            return
         try:
             if os.path.exists(FALLBACK_COCO_WEIGHTS):
                 self.coco_person_model = YOLO(FALLBACK_COCO_WEIGHTS)
@@ -231,11 +241,14 @@ class VisionEngine:
             print(f"[VisionEngine] Could not load COCO person detector: {e}")
 
     @staticmethod
-    def _trained_imgsz(model: YOLO) -> int:
+    def _trained_imgsz(model: Any) -> int:
         """Optimal CPU inference size capped at 384 for fluid 30 FPS playback."""
         return 384
 
     def load_model(self, weights_path: str) -> bool:
+        if not HAS_YOLO or YOLO is None:
+            print("[VisionEngine] YOLO/PyTorch not available in environment.")
+            return False
         with self.lock:
             try:
                 print(f"[VisionEngine] Loading YOLO model from {weights_path}...")
