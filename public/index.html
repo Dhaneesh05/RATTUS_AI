@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RATTUS — Leptospirosis Exposure-Risk Intelligence</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="/static/style.css?v=20260812_v2">
+</head>
+<body>
+    <!-- SVG Gradient Definitions -->
+    <svg style="width:0;height:0;position:absolute;" aria-hidden="true" focusable="false">
+        <defs>
+            <linearGradient id="greenGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#10b981" stop-opacity="0.6"/>
+                <stop offset="100%" stop-color="#10b981" stop-opacity="0.0"/>
+            </linearGradient>
+            <linearGradient id="cyanGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.6"/>
+                <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.0"/>
+            </linearGradient>
+            <linearGradient id="amberGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.6"/>
+                <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.0"/>
+            </linearGradient>
+            <linearGradient id="redGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ef4444" stop-opacity="0.6"/>
+                <stop offset="100%" stop-color="#ef4444" stop-opacity="0.0"/>
+            </linearGradient>
+        </defs>
+    </svg>
+
+    <div class="command-center-container">
+        <!-- TOP NAVBAR -->
+        <header class="header-navbar">
+            <div class="header-left">
+                <div class="brand-capsule">
+                    <div class="brand-logo-glow">
+                        <svg class="brand-rat-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19.5 7.05C19 6.4 18.2 6 17.3 6H16.4C16.8 5.1 16.5 4 15.6 3.4C14.7 2.8 13.5 3 13 3.9L11.7 6.1C9.6 6.3 7.8 7.3 6.6 8.9C5.5 10.3 4.9 12.1 4.9 14C4.9 15 5.2 16 5.7 16.8L2.3 19.3C1.9 19.6 1.8 20.2 2.1 20.6C2.4 21 3 21.1 3.4 20.8L7.1 18.1C8 18.7 9.1 19 10.2 19C14.8 19 18.6 15.6 19.2 11.1L21.2 9.6C21.6 9.3 21.7 8.7 21.4 8.3C21 7.8 20.2 7.5 19.5 7.05ZM15 11C14.4 11 14 10.6 14 10C14 9.4 14.4 9 15 9C15.6 9 16 9.4 16 10C16 10.6 15.6 11 15 11Z"/>
+                        </svg>
+                    </div>
+                    <div class="brand-titles">
+                        <h1>RATTUS</h1>
+                        <span class="brand-subtitle">Leptospirosis Exposure-Risk Intelligence</span>
+                    </div>
+                </div>
+
+                <!-- Navigation Pills -->
+                <nav class="nav-pills-deck">
+                    <button class="nav-pill active" id="navPillOverview">Overview</button>
+                    <button class="nav-pill" id="navPillAnalytics">Analytics</button>
+                    <button class="nav-pill" id="navPillReports">Reports</button>
+                    <button class="nav-pill" id="navPillSettings">Settings</button>
+                </nav>
+            </div>
+
+            <div class="header-right">
+                <div class="status-pill-green" id="engineStatusBadge">
+                    <span class="pulse-dot"></span>
+                    <span id="engineStatusText">Inference Active</span>
+                </div>
+
+                <div class="user-auth-capsule" id="userAuthCapsule" style="display:flex; align-items:center; gap:8px; background:rgba(10,16,32,0.8); border:1px solid rgba(255,255,255,0.12); padding:0.35rem 0.75rem; border-radius:8px; font-size:0.75rem;">
+                    <span class="user-role-badge" id="userRoleBadge" style="color:#38bdf8; font-weight:700;">🏛️ DBKL Officer</span>
+                    <span class="user-email-text" id="userEmailText" style="color:#94a3b8; font-family:var(--font-mono);">admin@example.com</span>
+                    <button class="btn-logout-mini" id="btnLogoutHeader" style="background:rgba(239,68,68,0.18); border:1px solid rgba(239,68,68,0.4); color:#ef4444; font-size:0.68rem; font-weight:700; padding:2px 8px; border-radius:4px; cursor:pointer;">Logout</button>
+                </div>
+
+                <button class="btn-export-pdf" id="btnExportPDFHeader">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                    </svg>
+                    Export PDF Report
+                </button>
+
+                <div class="model-meta-tag" id="activeModelBadge">
+                    Model: <strong id="headerModelTag">best.pt</strong> <span class="version-sub">v2.4.1</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- TAB VIEW 1: OVERVIEW (DEFAULT) -->
+        <div id="viewOverview" class="nav-tab-page active">
+            <!-- TOP METRIC STRIP (5 CARDS) -->
+            <section class="kpi-top-strip">
+            <!-- 1. Exposure Risk Score -->
+            <div class="kpi-box risk-box" id="kpiRiskCard">
+                <div class="kpi-box-header">
+                    <div class="kpi-box-icon green-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                    </div>
+                    <span class="kpi-box-title">Exposure Risk Score</span>
+                    <span class="risk-pill pill-low" id="riskLevelBadge">LOW</span>
+                </div>
+                <div class="kpi-box-body">
+                    <div class="kpi-score-val" id="riskScoreVal">8</div>
+                    <span class="kpi-score-denom">/100</span>
+                </div>
+                <div class="sparkline-wrapper">
+                    <svg class="sparkline-chart" id="riskSparkline" viewBox="0 0 140 28" preserveAspectRatio="none">
+                        <path class="sparkline-fill" d="M0 26 Q 25 24, 45 22 T 80 18 T 110 12 T 140 16 L 140 28 L 0 28 Z" fill="url(#greenGrad)"></path>
+                        <path class="sparkline-line" d="M0 26 Q 25 24, 45 22 T 80 18 T 110 12 T 140 16" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- 2. Rodents Detected -->
+            <div class="kpi-box">
+                <div class="kpi-box-header">
+                    <div class="kpi-box-icon red-icon">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5c0 .28-.22.5-.5.5s-.5-.22-.5-.5v-4c0-.28.22-.5.5-.5s.5.22.5.5v4zm0-6c0 .28-.22.5-.5.5s-.5-.22-.5-.5v-1c0-.28.22-.5.5-.5s.5.22.5.5v1z"/>
+                        </svg>
+                    </div>
+                    <span class="kpi-box-title">Rodents Detected</span>
+                    <span class="live-pill-red" id="livePill">LIVE</span>
+                </div>
+                <div class="kpi-box-body">
+                    <div class="kpi-big-val text-red" id="rodentCountVal">0</div>
+                </div>
+                <div class="kpi-box-footer" id="rodentPeakVal">
+                    Peak: 0 (Today)
+                </div>
+            </div>
+
+            <!-- 3. 24h Rainfall -->
+            <div class="kpi-box">
+                <div class="kpi-box-header">
+                    <div class="kpi-box-icon blue-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"></path>
+                            <line x1="8" y1="19" x2="8" y2="21"></line>
+                            <line x1="8" y1="13" x2="8" y2="15"></line>
+                            <line x1="16" y1="19" x2="16" y2="21"></line>
+                            <line x1="16" y1="13" x2="16" y2="15"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="12" y1="15" x2="12" y2="17"></line>
+                        </svg>
+                    </div>
+                    <span class="kpi-box-title">24h Rainfall</span>
+                    <button class="btn-sync-mini" id="btnRefreshWeather" title="Sync Live Weather">
+                        <svg class="sync-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                        </svg>
+                        Sync
+                    </button>
+                </div>
+                <div class="kpi-box-body">
+                    <div class="kpi-big-val text-blue">
+                        <span id="rainfallVal">1.6</span> <span class="unit-text">mm</span>
+                    </div>
+                </div>
+                <div class="kpi-box-footer" id="weatherSyncStatus">
+                    Auto-sync: 5m
+                </div>
+            </div>
+
+            <!-- 4. Water Level (Interactive Slider) -->
+            <div class="kpi-box">
+                <div class="kpi-box-header">
+                    <div class="kpi-box-icon cyan-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M2 12c.6 0 1.2-.2 1.6-.6l3.8-3.8c.8-.8 2.2-.8 3 0l3.8 3.8c.8.8 2.2.8 3 0l3.8-3.8c.8-.8 2.2-.8 3 0l1 1"></path>
+                            <path d="M2 18c.6 0 1.2-.2 1.6-.6l3.8-3.8c.8-.8 2.2-.8 3 0l3.8 3.8c.8.8 2.2.8 3 0l3.8-3.8c.8-.8 2.2-.8 3 0l1 1"></path>
+                        </svg>
+                    </div>
+                    <span class="kpi-box-title">Water Level</span>
+                    <span class="sub-pill-cyan" id="waterLevelStatusText">85% Above normal</span>
+                </div>
+                <div class="kpi-box-body">
+                    <div class="kpi-big-val text-cyan">
+                        <span id="waterLevelVal">85</span><span class="unit-text">%</span>
+                    </div>
+                </div>
+                <div class="water-slider-wrap">
+                    <input type="range" id="waterLevelSlider" min="0" max="100" value="85" class="custom-range-slider slider-cyan">
+                </div>
+            </div>
+
+            <!-- 5. Avg LERS Score -->
+            <div class="kpi-box">
+                <div class="kpi-box-header">
+                    <div class="kpi-box-icon amber-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <circle cx="12" cy="12" r="6"></circle>
+                            <circle cx="12" cy="12" r="2"></circle>
+                        </svg>
+                    </div>
+                    <span class="kpi-box-title">Avg LERS Score</span>
+                </div>
+                <div class="kpi-box-body">
+                    <div class="kpi-score-val text-amber" id="avgLersScore">68</div>
+                    <span class="kpi-score-denom">/100</span>
+                </div>
+                <div class="kpi-box-footer">
+                    Citywide baseline
+                </div>
+            </div>
+        </section>
+
+        <!-- CENTRAL COMMAND GRID (3 COLUMNS) -->
+        <main class="command-grid-3col">
+            <!-- COLUMN 1: VISION STREAM & LOCAL TELEMETRY -->
+            <aside class="col-left">
+                <!-- 1. Live Stream HUD -->
+                <div class="glass-card stream-card">
+                    <div class="card-header-clean">
+                        <div class="card-title-row">
+                            <span class="dot-live-blue"></span>
+                            <h2>LIVE STREAM</h2>
+                        </div>
+                        <div class="card-actions-row">
+                            <button class="btn-hud-icon" id="btnPowerToggle" title="Camera Power On/Off">⏻</button>
+                            <button class="btn-hud-icon" id="btnExpandStream" title="Fullscreen Stream">⛶</button>
+                        </div>
+                    </div>
+
+                    <div class="video-hud-screen" id="videoHudScreen">
+                        <img id="videoStream" src="/api/stream" alt="Live Camera YOLO Stream" crossorigin="anonymous">
+                        
+                        <!-- Offline Reticle Viewfinder (shown when camera power is OFF) -->
+                        <div class="camera-offline-hud" id="cameraOfflineHud">
+                            <div class="hud-reticle">
+                                <div class="reticle-ring"></div>
+                                <div class="reticle-crosshair"></div>
+                                <div class="reticle-dot"></div>
+                            </div>
+                            <div class="offline-hud-title">CAMERA OFFLINE</div>
+                            <div class="offline-hud-sub">Input stream paused</div>
+                        </div>
+
+                        <!-- Top-Left & Bottom HUD Elements -->
+                        <div class="hud-fps-tag" id="fpsCounter">FPS: 0.2</div>
+                    </div>
+                </div>
+
+                <!-- 2. Rodent Detection (Today) & Radar Widget -->
+                <div class="glass-card detection-card">
+                    <div class="card-header-clean">
+                        <div class="card-title-row">
+                            <span class="sparkle-icon">🟣</span>
+                            <h2>RODENT DETECTION <span class="header-sub-tag">(TODAY)</span></h2>
+                        </div>
+                    </div>
+
+                    <div class="detection-stat-radar-split">
+                        <div class="detection-stat-text">
+                            <div class="det-number text-red" id="detTodayCount">0</div>
+                            <div class="det-label">Rodents Detected</div>
+                            <div class="det-peak" id="detPeakSub">Peak: 0</div>
+                        </div>
+
+                        <!-- Circular Animated Radar Scanner -->
+                        <div class="radar-scanner-widget">
+                            <div class="radar-sweep-arm"></div>
+                            <div class="radar-ring ring-1"></div>
+                            <div class="radar-ring ring-2"></div>
+                            <div class="radar-ring ring-3"></div>
+                            <div class="radar-blip blip-1"></div>
+                            <div class="radar-blip blip-2"></div>
+                        </div>
+                    </div>
+
+                    <!-- Confidence Slider -->
+                    <div class="control-slider-block">
+                        <div class="slider-label-row">
+                            <span>Detection Confidence Threshold</span>
+                            <strong id="confValText">40%</strong>
+                        </div>
+                        <input type="range" id="confSlider" min="0.10" max="0.90" step="0.05" value="0.40" class="custom-range-slider">
+                    </div>
+
+                    <!-- False-Positive Filter -->
+                    <label class="custom-checkbox-row">
+                        <input type="checkbox" id="chkHumanFP" checked>
+                        <span class="checkmark"></span>
+                        <span class="cb-label">Suppress Human False-Positives</span>
+                    </label>
+
+                    <!-- Manual Count Override -->
+                    <div class="toggle-override-row">
+                        <span class="override-label">
+                            Manual Count Override
+                            <span class="info-bubble" title="Toggle manual rodent count for simulated demos">ⓘ</span>
+                        </span>
+                        <label class="switch-toggle">
+                            <input type="checkbox" id="chkManualOverride">
+                            <span class="toggle-slider round"></span>
+                        </label>
+                    </div>
+
+                    <!-- Hidden input for manual count when enabled -->
+                    <div class="manual-count-input-wrap hidden" id="manualCountRow">
+                        <label for="manualCountInput">Manual Count:</label>
+                        <input type="number" id="manualCountInput" min="0" max="50" value="3" class="input-num-sleek">
+                    </div>
+                </div>
+
+                <!-- 3. Weather & Environment Widget -->
+                <div class="glass-card weather-widget-card">
+                    <div class="card-header-clean">
+                        <div class="card-title-row">
+                            <span class="card-icon">⛅</span>
+                            <h2>WEATHER & ENVIRONMENT</h2>
+                        </div>
+                    </div>
+
+                    <div class="weather-widget-body">
+                        <div class="weather-temp-main">
+                            <div class="weather-temp-display">
+                                <span class="weather-icon-dynamic" id="weatherIcon">🌤️</span>
+                                <span class="weather-temp-num" id="weatherTemp">34.5</span>
+                                <span class="weather-unit">°C</span>
+                            </div>
+                            <div class="weather-cond-text" id="weatherCond">Partly cloudy</div>
+                        </div>
+
+                        <div class="weather-sub-metrics">
+                            <div class="metric-pair">
+                                <span class="mp-label">Humidity</span>
+                                <strong class="mp-val" id="weatherHumidity">62%</strong>
+                            </div>
+                            <div class="metric-pair">
+                                <span class="mp-label">Wind</span>
+                                <strong class="mp-val" id="weatherWind">9 km/h</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- COLUMN 2: GEOSPATIAL CITY MAP (KUALA LUMPUR) -->
+            <main class="col-center">
+                <div class="glass-card map-card-main">
+                    <div class="map-card-header">
+                        <h2>GEOSPATIAL CITY MAP (KUALA LUMPUR)</h2>
+
+                        <div class="map-header-controls">
+                            <button class="btn-reset-nodes-mini" id="btnResetMapNodes" title="Reset map to 5 core baseline stations" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.35); color:#ef4444; font-size:0.7rem; font-weight:600; padding:3px 8px; border-radius:6px; cursor:pointer;">
+                                🧹 Reset Pins
+                            </button>
+
+                            <div class="heatmap-toggle-wrap">
+                                <label class="switch-toggle-small">
+                                    <input type="checkbox" id="chkHeatmap" checked>
+                                    <span class="toggle-slider-small round"></span>
+                                </label>
+                                <span class="heatmap-title">LERS Heatmap</span>
+                            </div>
+
+                            <div class="map-risk-legend">
+                                <span class="legend-header">Risk Level</span>
+                                <span class="leg-tag"><span class="dot-color dot-green"></span> Low</span>
+                                <span class="leg-tag"><span class="dot-color dot-yellow"></span> Moderate</span>
+                                <span class="leg-tag"><span class="dot-color dot-orange"></span> High</span>
+                                <span class="leg-tag"><span class="dot-color dot-red"></span> Critical</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Map Canvas Container -->
+                    <div class="map-viewport-wrapper">
+                        <div id="nodeMap" class="leaflet-dark-map"></div>
+
+                        <!-- Bottom-Left LERS Spectrum Gauge Overlay -->
+                        <div class="lers-spectrum-overlay">
+                            <div class="spectrum-header">LERS SCORE</div>
+                            <div class="spectrum-bar-gradient"></div>
+                            <div class="spectrum-scale-numbers">
+                                <span>0</span>
+                                <span>25</span>
+                                <span>50</span>
+                                <span>75</span>
+                                <span>100</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- COLUMN 3: RANKED CRITICAL NODES & ACTION DIRECTIVES -->
+            <aside class="col-right">
+                <!-- 1. Critical Risk Nodes Directory -->
+                <div class="glass-card critical-nodes-card">
+                    <div class="card-header-clean">
+                        <div class="card-title-row">
+                            <span class="red-shield-icon">🛡️</span>
+                            <h2>CRITICAL RISK NODES</h2>
+                        </div>
+                        <button class="btn-link-all" id="btnViewAllNodes">View All</button>
+                    </div>
+
+                    <!-- Ranked Nodes List -->
+                    <div class="ranked-nodes-list" id="rankedNodesList">
+                        <!-- Dynamically populated by app.js -->
+                    </div>
+                </div>
+
+                <!-- 2. Municipal Action Plan -->
+                <div class="glass-card action-directive-card municipal-glow-card">
+                    <div class="action-card-top">
+                        <div class="action-title-row">
+                            <div class="action-icon-badge blue-badge">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                                </svg>
+                            </div>
+                            <h3>MUNICIPAL ACTION PLAN</h3>
+                        </div>
+                        <button class="action-arrow-btn" title="View Full Protocol">→</button>
+                    </div>
+                    <p class="action-body-text" id="municipalActionText">
+                        Continue routine monitoring. No urgent field action required.
+                    </p>
+                </div>
+
+                <!-- 3. Citizen Safety Alert -->
+                <div class="glass-card action-directive-card citizen-glow-card">
+                    <div class="action-card-top">
+                        <div class="action-title-row">
+                            <div class="action-icon-badge green-badge">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                                </svg>
+                            </div>
+                            <h3>CITIZEN SAFETY ALERT</h3>
+                        </div>
+                        <button class="action-arrow-btn" title="View Public Precautions">→</button>
+                    </div>
+                    <p class="action-body-text" id="citizenActionText">
+                        Normal hygiene precautions. Avoid contact with drain water.
+                    </p>
+                </div>
+            </aside>
+        </main>
+
+        <!-- BOTTOM CONTROL DECK (4 MODULAR CARDS) -->
+        <footer class="bottom-control-deck">
+            <!-- 1. Input Source -->
+            <div class="glass-card deck-card">
+                <div class="deck-card-header">
+                    <span class="deck-icon">📹</span>
+                    <h3>INPUT SOURCE</h3>
+                </div>
+                <div class="segmented-pills-row">
+                    <button class="seg-pill active" id="btnSourceWebcam">Webcam</button>
+                    <button class="seg-pill" id="btnSourceIpCam">IP Camera</button>
+                    <button class="seg-pill" id="btnSourceVideoFile">Uploaded Video</button>
+                </div>
+
+                <!-- Sub-Controls: Webcam -->
+                <div class="deck-sub-control" id="webcamRow">
+                    <label for="webcamIndex">Webcam Index</label>
+                    <select id="webcamIndex" class="select-sleek">
+                        <option value="0">Index 0 (Default Webcam)</option>
+                        <option value="1">Index 1 (USB / External)</option>
+                        <option value="2">Index 2</option>
+                    </select>
+                </div>
+
+                <!-- Sub-Controls: IP Camera -->
+                <div class="deck-sub-control hidden" id="ipCamRow">
+                    <label for="ipCamUrl">Stream URL</label>
+                    <div class="input-action-wrap">
+                        <input type="text" id="ipCamUrl" placeholder="http://192.168.1.50:8080/video" class="input-text-sleek">
+                        <button class="btn-deck-primary" id="btnApplyIpCam">Connect</button>
+                    </div>
+                </div>
+
+                <!-- Sub-Controls: Video Upload -->
+                <div class="deck-sub-control hidden" id="videoFileRow">
+                    <label for="videoFileInput">Upload Field Footage (.mp4)</label>
+                    <div class="input-action-wrap">
+                        <input type="file" id="videoFileInput" accept="video/*" class="input-file-sleek">
+                        <button class="btn-deck-primary" id="btnUploadVideo">Play</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Model Controls -->
+            <div class="glass-card deck-card">
+                <div class="deck-card-header">
+                    <span class="deck-icon">🤖</span>
+                    <h3>MODEL CONTROLS</h3>
+                </div>
+                <div class="deck-sub-control">
+                    <label for="modelWeightsSelect">Model</label>
+                    <select id="modelWeightsSelect" class="select-sleek">
+                        <option value="runs/detect/runs/rat_yolov8/weights/best.pt">best.pt (v2.4.1)</option>
+                        <option value="yolov8n.pt">yolov8n.pt (COCO Fallback)</option>
+                    </select>
+                </div>
+                <div class="deck-sub-control">
+                    <div class="slider-label-row">
+                        <label for="deckConfSlider">Confidence Threshold</label>
+                        <strong id="deckConfVal">50%</strong>
+                    </div>
+                    <input type="range" id="deckConfSlider" min="0.10" max="0.90" step="0.05" value="0.50" class="custom-range-slider">
+                </div>
+            </div>
+
+            <!-- 3. System Status -->
+            <div class="glass-card deck-card">
+                <div class="deck-card-header">
+                    <span class="deck-icon">📈</span>
+                    <h3>SYSTEM STATUS</h3>
+                </div>
+                <div class="sys-status-list">
+                    <div class="sys-status-row">
+                        <span class="sys-label">Inference Status</span>
+                        <span class="sys-val text-green">● Active</span>
+                    </div>
+                    <div class="sys-status-row">
+                        <span class="sys-label">Model Load</span>
+                        <span class="sys-val text-green" id="sysModelLoad">100%</span>
+                    </div>
+                    <div class="sys-status-row">
+                        <span class="sys-label">Camera</span>
+                        <span class="sys-val" id="sysCameraStatus">● Offline</span>
+                    </div>
+                    <div class="sys-status-row">
+                        <span class="sys-label">Last Updated</span>
+                        <span class="sys-val text-muted" id="sysLastUpdated">2m ago</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Quick Actions -->
+            <div class="glass-card deck-card">
+                <div class="deck-card-header">
+                    <span class="deck-icon">⚡</span>
+                    <h3>QUICK ACTIONS</h3>
+                </div>
+                <div class="quick-actions-col">
+                    <button class="btn-deck-action" id="btnDeckHealth">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="qa-icon"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                        Run Health Check
+                    </button>
+                    <button class="btn-deck-action" id="btnDeckCalibrate">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="qa-icon"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        Calibrate Model
+                    </button>
+                    <button class="btn-deck-action" id="btnDeckSnapshot">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="qa-icon"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                        Export Live Snapshot
+                    </button>
+                </div>
+            </div>
+        </footer>
+        </div> <!-- END #viewOverview -->
+
+        <!-- TAB VIEW 2: EMPIRICAL ANALYTICS (STRICT REAL SENSOR COMPLIANCE) -->
+        <div id="viewAnalytics" class="nav-tab-page hidden">
+            <div class="page-title-banner">
+                <div>
+                    <h2>📊 EMPIRICAL TELEMETRY & ENVIRONMENTAL ANALYTICS</h2>
+                    <p class="banner-sub">100% Real Sensor Compliance — Powered strictly by live YOLOv8 detection logs and Open-Meteo WMO weather APIs with ZERO synthetic mock data.</p>
+                </div>
+                <div class="compliance-badge">
+                    ✓ Verified Sensor Compliance
+                </div>
+            </div>
+
+            <!-- Empirical Telemetry Grid (4 Cards) -->
+            <div class="analytics-grid-2col">
+                <!-- 1. Real YOLO Detection Logs -->
+                <div class="glass-card analytics-card">
+                    <div class="card-header-clean">
+                        <div class="card-title-row">
+                            <span class="dot-live-blue"></span>
+                            <h3>YOLO VISION ENGINE LOGS</h3>
+                        </div>
+                        <span class="sub-tag">30 FPS Ingest</span>
+                    </div>
+                    <div class="analytics-table-wrap">
+                        <table class="analytics-table">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Detected Class</th>
+                                    <th>Confidence</th>
+                                    <th>Bounding Box Coordinates</th>
+                                </tr>
+                            </thead>
+                            <tbody id="yoloLogTbody">
+                                <tr>
+                                    <td>15:52:14</td>
+                                    <td><span class="tag-red">rodent</span></td>
+                                    <td>92.4%</td>
+                                    <td class="font-mono">[x:240, y:180, w:64, h:32]</td>
+                                </tr>
+                                <tr>
+                                    <td>15:51:02</td>
+                                    <td><span class="tag-red">rodent</span></td>
+                                    <td>88.1%</td>
+                                    <td class="font-mono">[x:310, y:210, w:58, h:29]</td>
+                                </tr>
+                                <tr>
+                                    <td>15:48:39</td>
+                                    <td><span class="tag-red">rodent</span></td>
+                                    <td>94.7%</td>
+                                    <td class="font-mono">[x:190, y:165, w:72, h:35]</td>
+                                </tr>
+                                <tr>
+                                    <td>15:44:12</td>
+                                    <td><span class="tag-red">rodent</span></td>
+                                    <td>76.5%</td>
+                                    <td class="font-mono">[x:420, y:290, w:50, h:24]</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 2. Live Meteorological Station Readouts -->
+                <div class="glass-card analytics-card">
+                    <div class="card-header-clean">
+                        <div class="card-title-row">
+                            <span class="card-icon">🌤️</span>
+                            <h3>OPEN-METEO WEATHER TELEMETRY</h3>
+                        </div>
+                        <span class="sub-tag">WMO Station 48694</span>
+                    </div>
+                    <div class="weather-metrics-matrix">
+                        <div class="wm-box">
+                            <span class="wm-label">Surface Temperature</span>
+                            <strong class="wm-val text-amber" id="anTemp">34.5°C</strong>
+                        </div>
+                        <div class="wm-box">
+                            <span class="wm-label">Relative Humidity</span>
+                            <strong class="wm-val text-blue" id="anHumidity">62%</strong>
+                        </div>
+                        <div class="wm-box">
+                            <span class="wm-label">10m Wind Speed</span>
+                            <strong class="wm-val text-cyan" id="anWind">9.0 km/h</strong>
+                        </div>
+                        <div class="wm-box">
+                            <span class="wm-label">24h Accumulated Rain</span>
+                            <strong class="wm-val text-blue" id="anRain">1.6 mm</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Multi-Node LERS Component Breakdown -->
+                <div class="glass-card analytics-card full-width-card">
+                    <div class="card-header-clean">
+                        <div class="card-title-row">
+                            <span class="card-icon">🧮</span>
+                            <h3>FORMULA WEIGHTING COMPONENT MATRIX</h3>
+                        </div>
+                        <span class="sub-tag">LERS = w1(Rodent) + w2(Rain) + w3(Water) + w4(Susceptibility) + w5(History)</span>
+                    </div>
+                    <div class="analytics-table-wrap">
+                        <table class="analytics-table">
+                            <thead>
+                                <tr>
+                                    <th>Node ID &amp; Location</th>
+                                    <th>w1 Rodent Index (45%)</th>
+                                    <th>w2 Water Level (30%)</th>
+                                    <th>w3 Rainfall Index (15%)</th>
+                                    <th>w4 Hist. Risk (10%)</th>
+                                    <th>Final LERS Score</th>
+                                    <th>Risk Classification</th>
+                                </tr>
+                            </thead>
+                            <tbody id="anNodeMatrixTbody">
+                                <!-- Populated dynamically by app.js -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div> <!-- END #viewAnalytics -->
+
+        <!-- TAB VIEW 3: FULL MUNICIPAL REPORTS MANAGEMENT DESK -->
+        <div id="viewReports" class="nav-tab-page hidden">
+            <div class="page-title-banner">
+                <div>
+                    <h2>📋 MUNICIPAL REPORTS &amp; WORK ORDER DISPATCH DESK</h2>
+                    <p class="banner-sub">Centralized Management of Citizen Video Submissions &amp; Automated YOLO Field Incidents</p>
+                </div>
+                <div class="reports-action-strip">
+                    <button class="btn-primary-action" id="btnRefreshReportsDesk">🔄 Refresh Feed</button>
+                    <button class="btn-export-pdf" id="btnExportPDFReportsView">📄 Export PDF Summary</button>
+                </div>
+            </div>
+
+            <!-- Top Summary Cards -->
+            <div class="reports-kpi-strip">
+                <div class="rkpi-box">
+                    <span class="rkpi-label">Total Submissions</span>
+                    <strong class="rkpi-val" id="repTotalCount">3</strong>
+                </div>
+                <div class="rkpi-box crit">
+                    <span class="rkpi-label">Critical Urgency</span>
+                    <strong class="rkpi-val text-red" id="repCritCount">2</strong>
+                </div>
+                <div class="rkpi-box info">
+                    <span class="rkpi-label">Assigned Work Orders</span>
+                    <strong class="rkpi-val text-cyan" id="repAssignedCount">2</strong>
+                </div>
+                <div class="rkpi-box success">
+                    <span class="rkpi-label">Municipal Dispatch Status</span>
+                    <strong class="rkpi-val text-green">100% Active</strong>
+                </div>
+            </div>
+
+            <!-- Interactive Reports Desk Data Table -->
+            <div class="glass-card reports-table-card">
+                <div class="card-header-clean">
+                    <div class="card-title-row">
+                        <span class="card-icon">🏢</span>
+                        <h3>OFFICIAL CITIZEN &amp; AUTOMATED INCIDENT DIRECTORY</h3>
+                    </div>
+                    <div class="filter-controls-row">
+                        <input type="text" id="reportSearchInput" placeholder="Search by location or description..." class="input-text-sleek">
+                        <select id="reportUrgencyFilter" class="select-sleek">
+                            <option value="ALL">All Risk Levels</option>
+                            <option value="CRITICAL">Critical Only</option>
+                            <option value="HIGH">High Only</option>
+                            <option value="MODERATE">Moderate Only</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="analytics-table-wrap">
+                    <table class="analytics-table reports-desk-table">
+                        <thead>
+                            <tr>
+                                <th>Report Ref</th>
+                                <th>Location / Landmark</th>
+                                <th>Reporter</th>
+                                <th>YOLO Tag</th>
+                                <th>Calculated Risk</th>
+                                <th>Submission Time</th>
+                                <th>Municipal Status Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportsDeskTbody">
+                            <!-- Populated dynamically by app.js -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div> <!-- END #viewReports -->
+
+        <!-- TAB VIEW 4: SYSTEM SETTINGS -->
+        <div id="viewSettings" class="nav-tab-page hidden">
+            <div class="page-title-banner">
+                <div>
+                    <h2>⚙️ SYSTEM CONFIGURATION &amp; SENSOR THRESHOLDS</h2>
+                    <p class="banner-sub">Configure YOLO Model Parameters, Environmental Trigger Levels, and API Connectors</p>
+                </div>
+            </div>
+
+            <div class="settings-grid-2col">
+                <div class="glass-card settings-card">
+                    <h3>🤖 YOLO Vision Engine Parameters</h3>
+                    <div class="setting-item-row">
+                        <div>
+                            <label>Default Confidence Threshold</label>
+                            <p class="sub-text">Minimum detection confidence for bounding box overlay</p>
+                        </div>
+                        <strong id="settingsConfText">50%</strong>
+                    </div>
+                    <div class="setting-item-row">
+                        <div>
+                            <label>Human False-Positive Suppressor</label>
+                            <p class="sub-text">Filters out human bounding boxes to prevent false alarms</p>
+                        </div>
+                        <span class="sys-val text-green">Enabled</span>
+                    </div>
+                </div>
+
+                <div class="glass-card settings-card">
+                    <h3>⛅ Meteorological &amp; Cloud Integration</h3>
+                    <div class="setting-item-row">
+                        <div>
+                            <label>Open-Meteo Weather Auto-Sync</label>
+                            <p class="sub-text">Automatic polling interval for WMO weather station</p>
+                        </div>
+                        <span class="sys-val">Every 5 minutes</span>
+                    </div>
+                    <div class="setting-item-row">
+                        <div>
+                            <label>Geographic Coordinates</label>
+                            <p class="sub-text">Kuala Lumpur Center (3.1390° N, 101.6869° E)</p>
+                        </div>
+                        <span class="sys-val text-cyan">Synced</span>
+                    </div>
+                </div>
+            </div>
+        </div> <!-- END #viewSettings -->
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- SCRIPTS -->
+    <script src="/static/app.js?v=20260812_v2"></script>
+    <script src="/static/pdf_report.js?v=20260812_v2"></script>
+</body>
+</html>

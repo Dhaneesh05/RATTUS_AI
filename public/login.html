@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RATTUS — Authentication Portal</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=7">
+</head>
+<body class="login-portal-body">
+
+    <div class="login-container-card">
+        <!-- Logo Header -->
+        <div class="login-brand-header">
+            <div class="login-logo-glow">
+                <svg class="login-rat-icon" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.5 7.05C19 6.4 18.2 6 17.3 6H16.4C16.8 5.1 16.5 4 15.6 3.4C14.7 2.8 13.5 3 13 3.9L11.7 6.1C9.6 6.3 7.8 7.3 6.6 8.9C5.5 10.3 4.9 12.1 4.9 14C4.9 15 5.2 16 5.7 16.8L2.3 19.3C1.9 19.6 1.8 20.2 2.1 20.6C2.4 21 3 21.1 3.4 20.8L7.1 18.1C8 18.7 9.1 19 10.2 19C14.8 19 18.6 15.6 19.2 11.1L21.2 9.6C21.6 9.3 21.7 8.7 21.4 8.3C21 7.8 20.2 7.5 19.5 7.05ZM15 11C14.4 11 14 10.6 14 10C14 9.4 14.4 9 15 9C15.6 9 16 9.4 16 10C16 10.6 15.6 11 15 11Z"/>
+                </svg>
+            </div>
+            <h1>RATTUS</h1>
+            <p>Leptospirosis Exposure-Risk Intelligence System</p>
+        </div>
+
+        <!-- Role Selector Pills -->
+        <div class="login-role-selector">
+            <button class="role-pill active" id="pillAuthority">🏛️ Authority Portal</button>
+            <button class="role-pill" id="pillCommunity">👥 Community App</button>
+        </div>
+
+        <!-- Login / Register Form -->
+        <form id="authForm" class="login-form">
+            <div class="form-group">
+                <label for="loginEmail">Email Address</label>
+                <input type="email" id="loginEmail" value="admin@example.com" placeholder="name@example.com" required class="mobile-input">
+            </div>
+
+            <div class="form-group">
+                <label for="loginPassword">Password</label>
+                <input type="password" id="loginPassword" value="••••••••" required class="mobile-input">
+            </div>
+
+            <div class="form-options-row">
+                <label class="custom-checkbox-row">
+                    <input type="checkbox" id="rememberMe" checked>
+                    <span class="checkmark"></span>
+                    <span class="cb-label">Remember Me</span>
+                </label>
+                <a href="#" class="forgot-link">Forgot password?</a>
+            </div>
+
+            <button type="submit" class="btn-auth-submit" id="btnAuthSubmit">
+                Sign In to Platform
+            </button>
+        </form>
+
+        <div class="login-footer-text">
+            Don't have an account? <a href="#" id="toggleSignup">Register New Account</a>
+        </div>
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div id="loginToastContainer" class="toast-container"></div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const pillAuthority = document.getElementById("pillAuthority");
+            const pillCommunity = document.getElementById("pillCommunity");
+            const btnDemoAdmin = document.getElementById("btnDemoAdmin");
+            const btnDemoCommunity = document.getElementById("btnDemoCommunity");
+            const loginEmail = document.getElementById("loginEmail");
+            const authForm = document.getElementById("authForm");
+            let selectedRole = "authority";
+
+            pillAuthority.addEventListener("click", () => {
+                pillAuthority.classList.add("active");
+                pillCommunity.classList.remove("active");
+                loginEmail.value = "admin@example.com";
+                selectedRole = "authority";
+            });
+
+            pillCommunity.addEventListener("click", () => {
+                pillCommunity.classList.add("active");
+                pillAuthority.classList.remove("active");
+                loginEmail.value = "community@example.com";
+                selectedRole = "community";
+            });
+
+            authForm.addEventListener("submit", (e) => {
+                e.preventDefault();
+                performLogin(loginEmail.value, document.getElementById("loginPassword").value);
+            });
+
+            async function performLogin(email, password) {
+                try {
+                    const resp = await fetch("/api/login", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email, password }),
+                    });
+                    const data = await resp.json();
+                    if (resp.ok && data.success) {
+                        localStorage.setItem("rattus_user", JSON.stringify(data.user));
+                        window.location.href = data.redirect;
+                    } else {
+                        alert(data.message || "Login failed");
+                    }
+                } catch (err) {
+                    console.error("Login error:", err);
+                    alert("Network error during authentication");
+                }
+            }
+        });
+    </script>
+</body>
+</html>
