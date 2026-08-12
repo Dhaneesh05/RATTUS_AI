@@ -35,6 +35,25 @@ else:
 
 app = FastAPI(title="RATTUS AI Exposure Risk API", version="2.1.0")
 
+class VercelPathMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            if path.startswith("/api/index.py"):
+                new_path = path[len("/api/index.py"):]
+                scope["path"] = new_path if new_path else "/"
+            elif path.startswith("/api/index"):
+                new_path = path[len("/api/index"):]
+                scope["path"] = new_path if new_path else "/"
+            elif path in ("/api", "/api/"):
+                scope["path"] = "/"
+        await self.app(scope, receive, send)
+
+app.add_middleware(VercelPathMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -44,7 +63,7 @@ app.add_middleware(
 )
 
 # Ensure uploads directory exists
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Initialize Vision Engine
@@ -846,34 +865,43 @@ def login_user(req: LoginRequest):
 
 
 # Mount static directory for Frontend Dashboard UI
-static_dir = os.path.join(os.path.dirname(__file__), "static")
+static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 if not os.path.exists(static_dir):
     os.makedirs(static_dir, exist_ok=True)
 
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
+app.mount("/static", StaticFiles(directory=static_dir, html=True), name="static")
+
+@app.get("/static/{file_path:path}")
+def serve_static_file(file_path: str):
+    target = os.path.join(static_dir, file_path)
+    if os.path.exists(target) and os.path.isfile(target):
+        return FileResponse(target)
+    raise HTTPException(status_code=404, detail="File not found")
 
 @app.get("/")
+@app.get("/index.html")
+@app.get("/api/index.py")
 def read_root():
     index_file = os.path.join(static_dir, "index.html")
     if os.path.exists(index_file):
-        return FileResponse(index_file)
+        return FileResponse(index_file, media_type="text/html")
     return {"message": "RATTUS FastAPI backend is running."}
 
-
 @app.get("/community")
+@app.get("/community.html")
 def read_community():
     community_file = os.path.join(static_dir, "community.html")
     if os.path.exists(community_file):
-        return FileResponse(community_file)
-    return FileResponse(os.path.join(static_dir, "index.html"))
-
+        return FileResponse(community_file, media_type="text/html")
+    return FileResponse(os.path.join(static_dir, "index.html"), media_type="text/html")
 
 @app.get("/login")
+@app.get("/login.html")
 def read_login():
     login_file = os.path.join(static_dir, "login.html")
     if os.path.exists(login_file):
-        return FileResponse(login_file)
-    return FileResponse(os.path.join(static_dir, "index.html"))
+        return FileResponse(login_file, media_type="text/html")
+    return FileResponse(os.path.join(static_dir, "index.html"), media_type="text/html")
 
 
 if __name__ == "__main__":
