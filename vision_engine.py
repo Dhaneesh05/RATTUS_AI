@@ -532,7 +532,15 @@ class VisionEngine:
             height, width = frame.shape[:2]
             
             try:
-                with torch.no_grad():
+                if torch is not None:
+                    with torch.no_grad():
+                        results = self.model.predict(
+                            frame,
+                            conf=self.conf_threshold,
+                            imgsz=self.infer_imgsz,
+                            verbose=False
+                        )
+                else:
                     results = self.model.predict(
                         frame,
                         conf=self.conf_threshold,
