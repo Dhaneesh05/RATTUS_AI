@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RATTUS Community — Citizen Early Warning & Incident Reporting</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="/static/style.css?v=6">
+</head>
+<body class="community-app-body">
+
+    <div class="mobile-app-shell">
+        <!-- MOBILE APP TOP HEADER -->
+        <header class="mobile-app-header">
+            <div class="mobile-header-top">
+                <div class="mobile-brand">
+                    <div class="mobile-logo-icon">🐀</div>
+                    <div class="mobile-brand-title">
+                        <h1>RATTUS</h1>
+                        <span>Community Network</span>
+                    </div>
+                </div>
+
+                <div class="user-auth-capsule-mobile" id="commUserCapsule" style="display:flex; align-items:center; gap:6px; background:rgba(10,16,32,0.8); border:1px solid rgba(255,255,255,0.12); padding:4px 8px; border-radius:6px; font-size:0.7rem;">
+                    <span class="user-email-text-mobile" id="commEmailText" style="color:#c084fc; font-family:var(--font-mono); font-weight:600;">community@example.com</span>
+                    <button class="btn-logout-mobile" id="btnCommLogout" style="background:rgba(239,68,68,0.18); border:1px solid rgba(239,68,68,0.4); color:#ef4444; font-size:0.65rem; font-weight:700; padding:2px 6px; border-radius:4px; cursor:pointer;">Logout</button>
+                </div>
+            </div>
+
+            <!-- Hyperlocal Alert Banner (24-48h Advance Warning) -->
+            <div class="hyperlocal-alert-strip" id="hyperlocalAlertStrip">
+                <span class="warning-pulse-icon">⚠️</span>
+                <div class="alert-strip-text">
+                    <strong>HYPERLOCAL WARNING (24-48H)</strong>
+                    <p>Heavy rain & drain runoff in Chow Kit. Avoid floodwater exposure.</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- MAIN MOBILE VIEWPORT (TAB CONTENT) -->
+        <main class="mobile-viewport">
+            
+            <!-- TAB 1: REPORT RODENT SIGHTING -->
+            <div id="viewReport" class="mobile-tab-view active">
+                <div class="mobile-card">
+                    <div class="mobile-card-header">
+                        <h2>📹 Record / Upload Sighting Video</h2>
+                        <span class="sub-tag">AI Detection Converter</span>
+                    </div>
+
+                    <p class="section-desc">
+                        Capture or upload video footage of rats or overflowing drains. Our engine will tag the sighting and generate an official report for city council authorities.
+                    </p>
+
+                    <!-- Camera Upload Dropzone -->
+                    <div class="video-capture-dropzone" id="videoCaptureDropzone">
+                        <div class="dropzone-reticle">
+                            <svg class="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                <circle cx="12" cy="13" r="4"></circle>
+                            </svg>
+                        </div>
+                        <div class="dropzone-text">Tap to Record / Upload Video</div>
+                        <div class="dropzone-sub">Supports MP4, MOV, AVI field footage</div>
+                        <input type="file" id="citizenVideoInput" accept="video/*" class="hidden-file-input">
+                    </div>
+
+                    <!-- AI Automated Detection Card (Appears after upload) -->
+                    <div class="automated-report-card hidden" id="automatedReportCard">
+                        <div class="arc-header">
+                            <span class="arc-badge">YOLO AUTOMATED TAG</span>
+                            <span class="arc-time" id="arcTimestamp">Just now</span>
+                        </div>
+                        <div class="arc-grid">
+                            <div class="arc-item">
+                                <span class="arc-label">Rodents Counted</span>
+                                <strong class="arc-val text-red" id="arcRodentCount">5 Rats</strong>
+                            </div>
+                            <div class="arc-item">
+                                <span class="arc-label">Detection Conf.</span>
+                                <strong class="arc-val text-blue" id="arcConf">92%</strong>
+                            </div>
+                            <div class="arc-item">
+                                <span class="arc-label">Calculated Risk</span>
+                                <strong class="arc-val text-orange" id="arcRisk">CRITICAL</strong>
+                            </div>
+                            <div class="arc-item">
+                                <span class="arc-label">Geotag Location</span>
+                                <strong class="arc-val" id="arcLocation">Chow Kit Zone</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Incident Form -->
+                    <form id="citizenReportForm" class="citizen-form">
+                        <div class="form-group">
+                            <label for="reportLocation">Location / Drain Landmark</label>
+                            <input type="text" id="reportLocation" value="Chow Kit Market Main Drain" required class="mobile-input">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="reportDescription">Sighting Details / Notes</label>
+                            <textarea id="reportDescription" rows="2" placeholder="Describe the rat activity or blocked drain..." class="mobile-textarea">Multiple rats spotted running out of blocked drain near food stalls after rainfall.</textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="reporterName">Your Name / Alias (Optional)</label>
+                            <input type="text" id="reporterName" value="Citizen Resident" class="mobile-input">
+                        </div>
+
+                        <button type="submit" class="btn-submit-report" id="btnSubmitReport">
+                            🚀 Submit Official Report to Authorities
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Recent Submitted Reports Feed -->
+                <div class="mobile-card" style="margin-top: 1rem;">
+                    <div class="mobile-card-header">
+                        <h2>📋 My Submitted Reports</h2>
+                    </div>
+                    <div class="citizen-reports-list" id="citizenReportsList">
+                        <!-- Populated by community.js -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: SCORELESS COMMUNITY RISK MAP -->
+            <div id="viewMap" class="mobile-tab-view">
+                <div class="mobile-card map-card-mobile">
+                    <div class="mobile-card-header">
+                        <h2>🗺️ Community Risk Heatmap</h2>
+                        <span class="sub-tag">Scoreless Public Advisories</span>
+                    </div>
+
+                    <!-- Map Legend (No numerical LERS scores) -->
+                    <div class="scoreless-legend-strip">
+                        <span class="leg-item"><span class="dot green"></span> Low Risk</span>
+                        <span class="leg-item"><span class="dot yellow"></span> Moderate</span>
+                        <span class="leg-item"><span class="dot orange"></span> High Risk</span>
+                        <span class="leg-item"><span class="dot red"></span> Critical Risk</span>
+                    </div>
+
+                    <!-- Map Container -->
+                    <div class="mobile-map-container">
+                        <div id="communityMap" class="leaflet-dark-map"></div>
+                    </div>
+
+                    <div class="community-map-advisory">
+                        <strong>💡 Public Safety Tip:</strong> Tap any colored zone pin to view local citizen reports and public health precautions.
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: COMMUNITY FORUM (BLOGSPOT STYLE) -->
+            <div id="viewForum" class="mobile-tab-view">
+                <div class="mobile-card">
+                    <div class="mobile-card-header">
+                        <h2>💬 Community Discussion Feed</h2>
+                        <button class="btn-new-post" id="btnOpenNewPostModal">➕ New Post</button>
+                    </div>
+
+                    <!-- Topic Filter Pills -->
+                    <div class="forum-category-pills">
+                        <button class="cat-pill active" data-cat="all">All Topics</button>
+                        <button class="cat-pill" data-cat="Rodent Sighting">🐀 Sightings</button>
+                        <button class="cat-pill" data-cat="Drain Blockage">🌧️ Drain Blockage</button>
+                        <button class="cat-pill" data-cat="Authority Update">📢 DBKL Updates</button>
+                        <button class="cat-pill" data-cat="Health Tip">💡 Health Tips</button>
+                    </div>
+
+                    <!-- Posts List Container -->
+                    <div class="forum-posts-container" id="forumPostsContainer">
+                        <!-- Populated by community.js -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: HYPERLOCAL ALERTS & EMERGENCY -->
+            <div id="viewAlerts" class="mobile-tab-view">
+                <div class="mobile-card">
+                    <div class="mobile-card-header">
+                        <h2>🔔 Hyperlocal 24-48h Warnings</h2>
+                    </div>
+
+                    <div class="alert-card-item critical-alert">
+                        <div class="alert-card-top">
+                            <span class="alert-tag red-tag">CRITICAL ALERT</span>
+                            <span class="alert-time">24-48h Advance</span>
+                        </div>
+                        <h3>Heavy Leptospirosis Exposure Risk near Jalan ABC / Chow Kit</h3>
+                        <p>Overlapping heavy rain forecasts and active rodent clusters detected. Avoid wading through stagnant floodwater or drain runoff.</p>
+                    </div>
+
+                    <div class="alert-card-item high-alert">
+                        <div class="alert-card-top">
+                            <span class="alert-tag orange-tag">HIGH RISK WARNING</span>
+                            <span class="alert-time">Active Today</span>
+                        </div>
+                        <h3>Bangsar South Stormwater Outlet Blockage</h3>
+                        <p>City council sanitation teams dispatched for drain clearing. Please use alternative pedestrian paths.</p>
+                    </div>
+
+                    <!-- Emergency Helpline Contacts -->
+                    <div class="emergency-helplines-card">
+                        <h3>☎️ Emergency & Municipal Contacts</h3>
+                        <div class="helpline-row">
+                            <span>DBKL Municipal Hotline:</span>
+                            <a href="tel:1800883255">1-800-88-3255</a>
+                        </div>
+                        <div class="helpline-row">
+                            <span>MOH Leptospirosis Helpline:</span>
+                            <a href="tel:0388833888">03-8883 3888</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- MOBILE BOTTOM TAB NAVIGATION BAR -->
+        <nav class="mobile-bottom-nav">
+            <button class="mobile-nav-item active" id="tabReport">
+                <span class="nav-icon">📹</span>
+                <span class="nav-text">Report</span>
+            </button>
+            <button class="mobile-nav-item" id="tabMap">
+                <span class="nav-icon">🗺️</span>
+                <span class="nav-text">Heatmap</span>
+            </button>
+            <button class="mobile-nav-item" id="tabForum">
+                <span class="nav-icon">💬</span>
+                <span class="nav-text">Forum</span>
+            </button>
+            <button class="mobile-nav-item" id="tabAlerts">
+                <span class="nav-icon">🔔</span>
+                <span class="nav-text">Alerts</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- NEW POST MODAL -->
+    <div id="newPostModal" class="community-modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>💬 Create Community Post</h3>
+                <button class="modal-close" id="btnCloseNewPostModal">✕</button>
+            </div>
+            <form id="newPostForm">
+                <div class="form-group">
+                    <label for="postAuthor">Your Name</label>
+                    <input type="text" id="postAuthor" value="Resident" class="mobile-input" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="postLocation">Location / Area</label>
+                    <input type="text" id="postLocation" value="Chow Kit" class="mobile-input" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="postTag">Category Tag</label>
+                    <select id="postTag" class="mobile-select">
+                        <option value="Rodent Sighting">🐀 Rodent Sighting</option>
+                        <option value="Drain Blockage">🌧️ Drain Blockage</option>
+                        <option value="Health Tip">💡 Health Tip</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="postContent">Post Message</label>
+                    <textarea id="postContent" rows="3" class="mobile-textarea" placeholder="Share sighting details or sanitation observations..." required></textarea>
+                </div>
+
+                <button type="submit" class="btn-submit-post">Publish to Community Feed</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div id="communityToastContainer" class="toast-container"></div>
+
+    <!-- SCRIPTS -->
+    <script src="/static/community.js?v=2"></script>
+</body>
+</html>
