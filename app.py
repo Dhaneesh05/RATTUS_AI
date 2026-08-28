@@ -21,7 +21,7 @@ st.set_page_config(
 )
 
 
-RODENT_LABEL_HINTS = {"rat", "mouse", "mice", "rodent", "squirrel"}
+RODENT_LABEL_HINTS = {"rat", "rats", "rodent", "rodents"}
 DEFAULT_ACTIONS = {
     "Low": {
         "municipal": "Continue routine monitoring. No urgent field action required.",
@@ -373,7 +373,7 @@ def main() -> None:
         frame_stride = st.slider("Process every Nth frame", 1, 5, 5)
         live_seconds = st.slider("Live demo duration (seconds)", 3, 600, 60, disabled=live_until_end)
         target_labels = parse_target_labels(
-            st.text_input("Rodent class labels", value="rat, mouse, mice, rodent")
+            st.text_input("Rodent class labels", value="rat, rats, rodent, rodents")
         )
 
         source_type = st.radio("Camera source", ["Laptop webcam", "Phone/IP camera URL"])

@@ -28,7 +28,7 @@ except Exception as _err:
     print(f"[VisionEngine Warning] PyTorch/YOLO not loaded: {_err}")
 
 
-RODENT_LABEL_HINTS = {"rat", "mouse", "mice", "rodent", "squirrel"}
+RODENT_LABEL_HINTS = {"rat", "rats", "rodent", "rodents"}
 
 DEFAULT_RAT_WEIGHTS = os.path.join("runs", "detect", "runs", "rat_yolov8", "weights", "best.pt")
 FALLBACK_COCO_WEIGHTS = "yolov8n.pt"
@@ -182,9 +182,9 @@ class VisionEngine:
         self.coco_person_model: Optional[YOLO] = None
         
         # Configuration
-        self.conf_threshold: float = 0.40
+        self.conf_threshold: float = 0.50
         self.suppress_human_fp: bool = True
-        self.max_box_area_ratio: float = 0.85
+        self.max_box_area_ratio: float = 0.55
         self.infer_imgsz: int = 640          # overwritten with the size the weights were trained at
         self.suppress_void_fp: bool = False   # appearance gate: dark textureless holes (disabled by default so fine-tuned model detects rats)
         # Temporal gate: off by default. It removes anything pinned in place, and a
@@ -230,6 +230,19 @@ class VisionEngine:
         # Load models
         self.load_model(self.weights_path)
         self.load_coco_person_model()
+
+    def is_rodent_label(self, label: str) -> bool:
+        label_lower = label.strip().lower()
+        if label_lower in self.target_labels:
+            return True
+
+        normalized = (
+            label_lower.replace("-", " ")
+            .replace("_", " ")
+            .replace("/", " ")
+            .replace("\\", " ")
+        )
+        return any(part in self.target_labels for part in normalized.split())
 
     def load_coco_person_model(self):
         if not HAS_YOLO or YOLO is None:
@@ -291,7 +304,7 @@ class VisionEngine:
             if suppress_human_fp is not None:
                 self.suppress_human_fp = bool(suppress_human_fp)
             if max_box_area_ratio is not None:
-                self.max_box_area_ratio = float(max_box_area_ratio)
+                self.max_box_area_ratio = max(0.05, min(0.90, float(max_box_area_ratio)))
             if suppress_void_fp is not None:
                 self.suppress_void_fp = bool(suppress_void_fp)
             if suppress_static_fp is not None:
@@ -314,9 +327,162 @@ class VisionEngine:
         if weights_path and weights_path != self.weights_path:
             self.load_model(weights_path)
 
+    def process_frame(self, frame: np.ndarray) -> Tuple[List[Dict[str, Any]], int, Dict[str, Any]]:
+        """Runs immediate YOLO inference on a single frame from Phone Web Camera and updates engine state."""
+        if frame is None or frame.size == 0 or self.model is None:
+            return [], 0, {"water_level_pct": 50, "water_line_y": 240, "trend": "STABLE"}
+
+        if frame.shape[1] > 640:
+            scale = 640.0 / frame.shape[1]
+            frame = cv2.resize(frame, (640, int(frame.shape[0] * scale)))
+
+        with self.frame_lock:
+            self.latest_frame = frame
+
+        t_start = time.time()
+        height, width = frame.shape[:2]
+
+        try:
+            if torch is not None:
+                with torch.no_grad():
+                    results = self.model.predict(
+                        frame,
+                        conf=max(0.15, self.conf_threshold),
+                        imgsz=self.infer_imgsz,
+                        verbose=False
+                    )
+            else:
+                results = self.model.predict(
+                    frame,
+                    conf=max(0.15, self.conf_threshold),
+                    imgsz=self.infer_imgsz,
+                    verbose=False
+                )
+        except Exception as e:
+            print(f"[VisionEngine] Prediction error: {e}")
+            return [], 0, self.estimate_water_level(frame)
+
+        new_detections = []
+        rodent_count = 0
+        conf_scores = []
+        non_rodent_boxes = self.detect_non_rodent_boxes(frame) if self.suppress_human_fp else []
+
+        if results and len(results) > 0 and results[0].boxes is not None:
+            res = results[0]
+            names = res.names
+            for cls, conf, box in zip(
+                res.boxes.cls.tolist(),
+                res.boxes.conf.tolist(),
+                res.boxes.xyxy.tolist(),
+            ):
+                confidence = float(conf)
+                if confidence < self.conf_threshold:
+                    continue
+
+                class_id = int(cls)
+                raw_label = str(names.get(class_id, class_id)) if isinstance(names, dict) else str(names[class_id])
+                label_lower = raw_label.lower()
+
+                if not self.is_rodent_label(label_lower):
+                    continue
+
+                x1, y1, x2, y2 = [int(v) for v in box]
+                bw = max(1, x2 - x1)
+                bh = max(1, y2 - y1)
+                box_area = bw * bh
+                frame_area = height * width
+                area_ratio = box_area / frame_area
+
+                # Reject oversized boxes. Real rodents can fill a close camera view,
+                # but humans and large background objects should not count as rats.
+                if area_ratio > self.max_box_area_ratio:
+                    continue
+
+                # Filter out human faces, bodies, cups, bottles, phones, and everyday objects
+                if self.suppress_human_fp and self.is_human_or_object_false_positive(box, height, width, non_rodent_boxes, frame=frame):
+                    continue
+
+                rodent_count += 1
+                conf_scores.append(confidence)
+                new_detections.append({
+                    "label": raw_label,
+                    "confidence": round(confidence, 2),
+                    "box": [x1, y1, x2, y2]
+                })
+
+        t_end = time.time()
+        self._inference_times.append(t_end - t_start)
+        if len(self._inference_times) > 10:
+            self._inference_times.pop(0)
+
+        fps = round(1.0 / (sum(self._inference_times) / len(self._inference_times)), 1) if self._inference_times else 0.0
+
+        with self.lock:
+            self.latest_detections = new_detections
+            self.latest_rodent_count = rodent_count
+            self.latest_conf_scores = conf_scores
+            self.stats.current_count = rodent_count
+            self.stats.max_session_count = max(self.stats.max_session_count, rodent_count)
+            self.stats.total_frames_processed += 1
+            self.stats.fps = fps
+            if rodent_count > 0:
+                self.stats.last_detection_time = time.time()
+                self.stats.avg_confidence = round(float(np.mean(conf_scores)), 2) if conf_scores else 0.0
+
+        return new_detections, rodent_count, self.estimate_water_level(frame)
+
+    def estimate_water_level(self, frame: np.ndarray) -> Dict[str, Any]:
+        if frame is None or frame.size == 0:
+            return {"water_level_pct": 50, "water_line_y": 240, "trend": "STABLE"}
+
+        height, width = frame.shape[:2]
+        if height < 20 or width < 20:
+            return {"water_level_pct": 50, "water_line_y": height // 2, "trend": "STABLE"}
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        roi = gray[int(height * 0.15):int(height * 0.90), int(width * 0.15):int(width * 0.85)]
+        if roi.size == 0:
+            return {"water_level_pct": 50, "water_line_y": height // 2, "trend": "STABLE"}
+
+        edges = cv2.Sobel(cv2.GaussianBlur(roi, (5, 5), 0), cv2.CV_64F, 0, 1, ksize=3)
+        row_strength = np.mean(np.abs(edges), axis=1)
+        local_y = int(np.argmax(row_strength))
+        water_line_y = int(height * 0.15) + local_y
+        water_level_pct = int(round(max(0.0, min(100.0, ((height - water_line_y) / height) * 100.0))))
+
+        previous = getattr(self, "_last_water_level_pct", water_level_pct)
+        trend = "STABLE"
+        if water_level_pct > previous + 2:
+            trend = "RISING"
+        elif water_level_pct < previous - 2:
+            trend = "FALLING"
+        self._last_water_level_pct = water_level_pct
+
+        return {
+            "water_level_pct": water_level_pct,
+            "water_line_y": water_line_y,
+            "trend": trend,
+        }
+
+    def push_frame(self, frame: np.ndarray):
+        """Allows phone browser or external client to push live camera frames directly into YOLO pipeline."""
+        if frame is None or frame.size == 0:
+            return
+        if frame.shape[1] > 640:
+            scale = 640.0 / frame.shape[1]
+            frame = cv2.resize(frame, (640, int(frame.shape[0] * scale)))
+        with self.frame_lock:
+            self.latest_frame = frame
+        
+        # Ensure inference thread is active
+        if not self.inference_running or (self.inference_thread and not self.inference_thread.is_alive()):
+            self.start_threads("phone_cam")
+
     def get_camera_source(self) -> Any:
         if self.source_type == "off":
             return "off"
+        if self.source_type in ("phone_cam", "phone"):
+            return "phone_cam"
         if self.source_type == "webcam":
             return self.camera_index
         if self.source_type == "video_file":
@@ -328,6 +494,13 @@ class VisionEngine:
             print("[VisionEngine] Camera worker paused (Source is OFF)")
             with self.frame_lock:
                 self.latest_frame = None
+            return
+
+        if source == "phone_cam":
+            print("[VisionEngine] Camera worker active for Phone Web Camera Stream")
+            while self.cap_running and source == self.current_source:
+                time.sleep(0.05)
+            print("[VisionEngine] Phone Web Camera stream stopped")
             return
 
         print(f"[VisionEngine] Camera worker started for source: {source}")
@@ -380,31 +553,62 @@ class VisionEngine:
         cap.release()
         print(f"[VisionEngine] Camera worker stopped for source: {source}")
 
-    def detect_person_boxes_cached(self, frame: np.ndarray) -> List[List[int]]:
-        self.person_check_counter += 1
-        if self.person_check_counter % self.person_check_interval == 1 or not self.cached_person_boxes:
-            if self.coco_person_model is not None:
-                try:
-                    res = self.coco_person_model.predict(frame, conf=0.35, imgsz=256, verbose=False)
-                    if res and res[0].boxes is not None:
-                        boxes = []
-                        names = res[0].names
-                        for cls, box in zip(res[0].boxes.cls.tolist(), res[0].boxes.xyxy.tolist()):
-                            class_id = int(cls)
-                            label = names.get(class_id, str(class_id)) if isinstance(names, dict) else names[class_id]
-                            if str(label).lower() == "person":
-                                boxes.append([int(v) for v in box])
-                        self.cached_person_boxes = boxes
-                except Exception:
-                    pass
-        return self.cached_person_boxes
+    def detect_non_rodent_boxes(self, frame: np.ndarray) -> List[Tuple[str, List[int]]]:
+        """Detects humans and cups using COCO validator model."""
+        if self.coco_person_model is None:
+            return []
+        try:
+            res = self.coco_person_model.predict(frame, conf=0.35, imgsz=256, verbose=False)
+            if res and res[0].boxes is not None:
+                boxes = []
+                names = res[0].names
+                filter_classes = {
+                    "person",
+                    "bicycle",
+                    "car",
+                    "motorcycle",
+                    "bus",
+                    "truck",
+                    "backpack",
+                    "handbag",
+                    "suitcase",
+                    "bottle",
+                    "cup",
+                    "fork",
+                    "knife",
+                    "spoon",
+                    "bowl",
+                    "chair",
+                    "couch",
+                    "potted plant",
+                    "bed",
+                    "dining table",
+                    "tv",
+                    "laptop",
+                    "mouse",
+                    "remote",
+                    "keyboard",
+                    "cell phone",
+                    "book",
+                    "vase",
+                }
+                for cls, box in zip(res[0].boxes.cls.tolist(), res[0].boxes.xyxy.tolist()):
+                    class_id = int(cls)
+                    label = str(names.get(class_id, class_id)).lower() if isinstance(names, dict) else str(names[class_id]).lower()
+                    if label in filter_classes:
+                        boxes.append((label, [int(v) for v in box]))
+                return boxes
+        except Exception:
+            pass
+        return []
 
-    def is_human_false_positive(
+    def is_human_or_object_false_positive(
         self,
         box: List[int],
         frame_height: int,
         frame_width: int,
-        person_boxes: List[List[int]]
+        non_rodent_boxes: List[Tuple[str, List[int]]],
+        frame: Optional[np.ndarray] = None
     ) -> bool:
         x1, y1, x2, y2 = box
         bw = max(1, x2 - x1)
@@ -412,29 +616,42 @@ class VisionEngine:
         box_area = bw * bh
         frame_area = frame_height * frame_width
 
-        if bh / frame_height > 0.75 and bh / bw > 1.5:
+        area_ratio = box_area / frame_area
+        aspect = bw / bh
+
+        # Reject tall person-like crops even if the COCO validator misses them.
+        if area_ratio > 0.03 and (bh / frame_height > 0.30) and aspect < 0.75:
             return True
 
-        if box_area / frame_area > self.max_box_area_ratio:
+        # Reject wide/huge crops that are more likely background, bags, furniture,
+        # clothing, or hands than a rodent.
+        if area_ratio > self.max_box_area_ratio:
             return True
 
-        for px1, py1, px2, py2 in person_boxes:
-            pbw = max(1, px2 - px1)
-            pbh = max(1, py2 - py1)
-            p_area = pbw * pbh
-            ix1 = max(x1, px1)
-            iy1 = max(y1, py1)
-            ix2 = min(x2, px2)
-            iy2 = min(y2, py2)
+        for label, (ox1, oy1, ox2, oy2) in non_rodent_boxes:
+            ix1 = max(x1, ox1)
+            iy1 = max(y1, oy1)
+            ix2 = min(x2, ox2)
+            iy2 = min(y2, oy2)
             inter_w = max(0, ix2 - ix1)
             inter_h = max(0, iy2 - iy1)
             inter_area = inter_w * inter_h
 
             if inter_area > 0:
-                if (inter_area / box_area) > 0.60 and (box_area / frame_area) > 0.15:
-                    return True
-                union_area = box_area + p_area - inter_area
-                if (inter_area / union_area) > 0.40:
+                overlap_candidate = inter_area / box_area
+                cx = (x1 + x2) / 2.0
+                cy = (y1 + y2) / 2.0
+                center_inside = ox1 <= cx <= ox2 and oy1 <= cy <= oy2
+
+                # If candidate box is likely part of a human face/body, suppress it.
+                if label == "person":
+                    if overlap_candidate > 0.25 or (center_inside and area_ratio > 0.02):
+                        print(f"[VisionEngine] REJECTED human body/face false-positive ({overlap_candidate:.2f})")
+                        return True
+                
+                # If candidate box is predominantly an everyday object, suppress it.
+                if label != "person" and overlap_candidate > 0.50:
+                    print(f"[VisionEngine] REJECTED {label} false-positive")
                     return True
 
         return False
@@ -552,7 +769,7 @@ class VisionEngine:
                 time.sleep(0.1)
                 continue
 
-            person_boxes = []  # Disable human FP check for uploaded drain videos
+            non_rodent_boxes = self.detect_non_rodent_boxes(frame) if self.suppress_human_fp else []
 
             new_detections = []
             rodent_count = 0
@@ -561,9 +778,6 @@ class VisionEngine:
             if results and len(results) > 0 and results[0].boxes is not None:
                 res = results[0]
                 names = res.names
-                is_custom_rodent_model = "rat" in self.weights_path.lower() or "rodent" in self.weights_path.lower()
-                num_boxes = len(res.boxes.cls.tolist())
-                print(f"[VisionEngine] YOLO returned {num_boxes} raw boxes this frame")
 
                 for cls, conf, box in zip(
                     res.boxes.cls.tolist(),
@@ -578,14 +792,7 @@ class VisionEngine:
                     raw_label = str(names.get(class_id, class_id)) if isinstance(names, dict) else str(names[class_id])
                     label_lower = raw_label.lower()
 
-                    is_rodent = (
-                        is_custom_rodent_model
-                        or label_lower in self.target_labels
-                        or any(hint in label_lower for hint in RODENT_LABEL_HINTS)
-                    )
-
-                    if not is_rodent:
-                        print(f"[VisionEngine] Skipped non-rodent: {raw_label} conf={confidence:.2f}")
+                    if not self.is_rodent_label(label_lower):
                         continue
 
                     x1, y1, x2, y2 = [int(v) for v in box]
@@ -595,9 +802,13 @@ class VisionEngine:
                     frame_area = height * width
                     area_ratio = box_area / frame_area
 
-                    # Only reject boxes that fill >90% of the entire frame (clearly not a single rat)
-                    if area_ratio > 0.90:
-                        print(f"[VisionEngine] Rejected full-frame box: area_ratio={area_ratio:.2f}")
+                    # Reject oversized boxes. Real rodents can fill a close camera view,
+                    # but humans and large background objects should not count as rats.
+                    if area_ratio > self.max_box_area_ratio:
+                        continue
+
+                    # Filter out human bodies, cups, bottles, phones, and everyday objects
+                    if self.suppress_human_fp and self.is_human_or_object_false_positive(box, height, width, non_rodent_boxes, frame=frame):
                         continue
 
                     rodent_count += 1
@@ -783,4 +994,3 @@ class VisionEngine:
         if ret:
             return buf.tobytes()
         return None
-

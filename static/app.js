@@ -82,14 +82,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Bottom Deck: Input Source
     const btnSourceWebcam = document.getElementById("btnSourceWebcam");
-    const btnSourceIpCam = document.getElementById("btnSourceIpCam");
+    const btnSourcePhoneCam = document.getElementById("btnSourcePhoneCam");
     const btnSourceVideoFile = document.getElementById("btnSourceVideoFile");
     const webcamRow = document.getElementById("webcamRow");
-    const ipCamRow = document.getElementById("ipCamRow");
+    const phoneCamRow = document.getElementById("phoneCamRow");
     const videoFileRow = document.getElementById("videoFileRow");
     const webcamIndex = document.getElementById("webcamIndex");
-    const ipCamUrl = document.getElementById("ipCamUrl");
-    const btnApplyIpCam = document.getElementById("btnApplyIpCam");
+    const btnTogglePhoneCam = document.getElementById("btnTogglePhoneCam");
+    const btnFlipPhoneCam = document.getElementById("btnFlipPhoneCam");
+    const phoneCamIndicator = document.getElementById("phoneCamIndicator");
+    const phoneCamFps = document.getElementById("phoneCamFps");
+    const phoneCamBtnText = document.getElementById("phoneCamBtnText");
+    const phoneLiveVideo = document.getElementById("phoneLiveVideo");
+    const phoneDetectionCanvas = document.getElementById("phoneDetectionCanvas");
     const videoFileInput = document.getElementById("videoFileInput");
     const btnUploadVideo = document.getElementById("btnUploadVideo");
 
@@ -337,20 +342,29 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // --- Input Source Tab Switching ---
+    // --- Phone Web Camera Live Stream State ---
+    let phoneStreamActive = false;
+    let phoneMediaStream = null;
+    let phoneFacingMode = "environment"; // default to rear camera on phone
+    let phoneFrameTimer = null;
+    let phoneFpsCounter = 0;
+    let phoneLastFpsTime = Date.now();
+    let isUploadingFrame = false;
+
     function updateSourceTab(type) {
-        [btnSourceWebcam, btnSourceIpCam, btnSourceVideoFile].forEach(btn => {
+        [btnSourceWebcam, btnSourcePhoneCam, btnSourceVideoFile].forEach(btn => {
             if (btn) btn.classList.remove("active");
         });
-        [webcamRow, ipCamRow, videoFileRow].forEach(row => {
+        [webcamRow, phoneCamRow, videoFileRow].forEach(row => {
             if (row) row.classList.add("hidden");
         });
 
         if (type === "webcam") {
             if (btnSourceWebcam) btnSourceWebcam.classList.add("active");
             if (webcamRow) webcamRow.classList.remove("hidden");
-        } else if (type === "ip_cam") {
-            if (btnSourceIpCam) btnSourceIpCam.classList.add("active");
-            if (ipCamRow) ipCamRow.classList.remove("hidden");
+        } else if (type === "phone_cam") {
+            if (btnSourcePhoneCam) btnSourcePhoneCam.classList.add("active");
+            if (phoneCamRow) phoneCamRow.classList.remove("hidden");
         } else if (type === "video_file") {
             if (btnSourceVideoFile) btnSourceVideoFile.classList.add("active");
             if (videoFileRow) videoFileRow.classList.remove("hidden");
@@ -359,6 +373,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (btnSourceWebcam) {
         btnSourceWebcam.addEventListener("click", () => {
+            if (phoneStreamActive) stopPhoneCamera();
             updateSourceTab("webcam");
             setPowerState(true);
             const localPlayer = document.getElementById("uploadedVideoPlayer");
@@ -373,14 +388,16 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    if (btnSourceIpCam) {
-        btnSourceIpCam.addEventListener("click", () => {
-            updateSourceTab("ip_cam");
+    if (btnSourcePhoneCam) {
+        btnSourcePhoneCam.addEventListener("click", () => {
+            updateSourceTab("phone_cam");
+            showToast("Selected Phone Camera. Tap 'Start Phone Camera' to stream live from your device.", "info");
         });
     }
 
     if (btnSourceVideoFile) {
         btnSourceVideoFile.addEventListener("click", () => {
+            if (phoneStreamActive) stopPhoneCamera();
             updateSourceTab("video_file");
         });
     }
@@ -396,17 +413,238 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    if (btnApplyIpCam && ipCamUrl) {
-        btnApplyIpCam.addEventListener("click", async () => {
-            const url = ipCamUrl.value.trim();
-            if (!url) return;
+    // --- Phone Camera Stream Controls ---
+    async function startPhoneCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            if (window.location.protocol !== "https:" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+                showToast(`HTTPS Required: Mobile Safari blocks camera on HTTP. Please open https://${window.location.hostname}:${window.location.port || '8000'}`, "danger");
+            } else {
+                showToast("Camera access not supported on this browser", "danger");
+            }
+            return;
+        }
+
+        try {
+            showToast("Requesting phone camera...", "info");
+            const constraints = {
+                video: {
+                    facingMode: { ideal: phoneFacingMode },
+                    width: { ideal: 640, max: 1280 },
+                    height: { ideal: 480, max: 720 },
+                },
+                audio: false
+            };
+
+            phoneMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+            
+            if (phoneLiveVideo) {
+                phoneLiveVideo.srcObject = phoneMediaStream;
+                phoneLiveVideo.setAttribute("playsinline", "true");
+                phoneLiveVideo.setAttribute("webkit-playsinline", "true");
+                phoneLiveVideo.setAttribute("muted", "true");
+                phoneLiveVideo.muted = true;
+                phoneLiveVideo.classList.remove("hidden");
+                await phoneLiveVideo.play();
+            }
+
+            if (phoneDetectionCanvas) {
+                phoneDetectionCanvas.classList.remove("hidden");
+            }
+
+            if (videoStream) videoStream.classList.add("hidden");
+            if (cameraOfflineHud) cameraOfflineHud.classList.add("hidden");
+
+            const localPlayer = document.getElementById("uploadedVideoPlayer");
+            if (localPlayer) localPlayer.classList.add("hidden");
+
+            phoneStreamActive = true;
             setPowerState(true);
-            await fetch("/api/config", {
+
+            // Update UI
+            if (btnTogglePhoneCam) btnTogglePhoneCam.classList.add("streaming");
+            if (phoneCamBtnText) phoneCamBtnText.textContent = "Stop Phone Camera";
+            if (phoneCamIndicator) {
+                phoneCamIndicator.textContent = "● Live Streaming";
+                phoneCamIndicator.classList.add("streaming");
+            }
+
+            // Inform backend of phone camera mode
+            fetch("/api/config", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ source_type: "ip_cam", camera_url: url }),
+                body: JSON.stringify({ source_type: "phone_cam" }),
             });
-            showToast(`Connecting to IP Camera stream...`);
+
+            // Start live frame capture & YOLO inference stream
+            const offscreenCanvas = document.createElement("canvas");
+            const offscreenCtx = offscreenCanvas.getContext("2d");
+            phoneFpsCounter = 0;
+            phoneLastFpsTime = Date.now();
+
+            const streamFrameLoop = () => {
+                if (!phoneStreamActive) return;
+
+                if (phoneLiveVideo && phoneLiveVideo.videoWidth > 0 && !isUploadingFrame) {
+                    isUploadingFrame = true;
+                    offscreenCanvas.width = 640;
+                    const aspect = (phoneLiveVideo.videoHeight / phoneLiveVideo.videoWidth) || 0.75;
+                    offscreenCanvas.height = Math.round(640 * aspect);
+                    
+                    offscreenCtx.drawImage(phoneLiveVideo, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+                    
+                    offscreenCanvas.toBlob(async (blob) => {
+                        if (blob && phoneStreamActive) {
+                            try {
+                                const res = await fetch("/api/upload_frame", {
+                                    method: "POST",
+                                    body: blob,
+                                    headers: { "Content-Type": "image/jpeg" }
+                                });
+                                if (res.ok) {
+                                    const data = await res.json();
+
+                                    // Draw real-time detection bounding boxes directly on phone camera preview!
+                                    if (phoneDetectionCanvas && phoneLiveVideo) {
+                                        phoneDetectionCanvas.width = phoneLiveVideo.clientWidth || 640;
+                                        phoneDetectionCanvas.height = phoneLiveVideo.clientHeight || 480;
+                                        const octx = phoneDetectionCanvas.getContext("2d");
+                                        octx.clearRect(0, 0, phoneDetectionCanvas.width, phoneDetectionCanvas.height);
+
+                                        const scaleX = phoneDetectionCanvas.width / offscreenCanvas.width;
+                                        const scaleY = phoneDetectionCanvas.height / offscreenCanvas.height;
+
+                                        if (data.detections && data.detections.length > 0) {
+                                            data.detections.forEach(det => {
+                                                const [x1, y1, x2, y2] = det.box;
+                                                const sx1 = x1 * scaleX;
+                                                const sy1 = y1 * scaleY;
+                                                const sw = (x2 - x1) * scaleX;
+                                                const sh = (y2 - y1) * scaleY;
+
+                                                octx.strokeStyle = "#ef4444";
+                                                octx.lineWidth = 2.5;
+                                                octx.strokeRect(sx1, sy1, sw, sh);
+
+                                                // Pill tag
+                                                const labelText = `🐭 ${det.label || 'Rodent'} ${Math.round((det.confidence || 0.8) * 100)}%`;
+                                                octx.font = "bold 11px 'JetBrains Mono', monospace";
+                                                const textWidth = octx.measureText(labelText).width;
+                                                octx.fillStyle = "rgba(239, 68, 68, 0.85)";
+                                                octx.fillRect(sx1, Math.max(0, sy1 - 18), textWidth + 8, 18);
+                                                octx.fillStyle = "#ffffff";
+                                                octx.fillText(labelText, sx1 + 4, Math.max(12, sy1 - 5));
+                                            });
+                                        }
+                                    }
+
+                                    // Sync live telemetry to dashboard cards
+                                    if (typeof data.rodents_detected !== "undefined") {
+                                        if (rodentCountVal) rodentCountVal.textContent = data.rodents_detected;
+                                    }
+                                    if (typeof data.water_level_pct !== "undefined") {
+                                        const waterLevelVal = document.getElementById("waterLevelVal");
+                                        if (waterLevelVal) waterLevelVal.textContent = `${data.water_level_pct}%`;
+                                        const waterSlider = document.getElementById("waterSlider");
+                                        if (waterSlider) waterSlider.value = data.water_level_pct;
+                                    }
+                                    if (typeof data.risk_score !== "undefined") {
+                                        const riskScoreVal = document.getElementById("riskScoreVal");
+                                        if (riskScoreVal) riskScoreVal.textContent = data.risk_score;
+                                    }
+
+                                    phoneFpsCounter++;
+                                    const now = Date.now();
+                                    if (now - phoneLastFpsTime >= 1000) {
+                                        const fps = Math.round((phoneFpsCounter * 1000) / (now - phoneLastFpsTime));
+                                        if (phoneCamFps) phoneCamFps.textContent = `${fps} FPS`;
+                                        if (fpsCounter) fpsCounter.textContent = `FPS: ${fps}`;
+                                        phoneFpsCounter = 0;
+                                        phoneLastFpsTime = now;
+                                    }
+                                }
+                            } catch (err) {
+                                // Silent retry
+                            } finally {
+                                isUploadingFrame = false;
+                            }
+                        } else {
+                            isUploadingFrame = false;
+                        }
+                    }, "image/jpeg", 0.65);
+                }
+
+                if (phoneStreamActive) {
+                    phoneFrameTimer = setTimeout(streamFrameLoop, 65); // Fluid ~15 FPS inference
+                }
+            };
+
+            streamFrameLoop();
+            showToast("Phone Camera live streaming — YOLO detection active! 📱✨", "success");
+
+        } catch (err) {
+            console.error("Phone camera error:", err);
+            showToast(`Camera permission error: ${err.message}`, "danger");
+            stopPhoneCamera();
+        }
+    }
+
+    function stopPhoneCamera() {
+        phoneStreamActive = false;
+        if (phoneFrameTimer) {
+            clearTimeout(phoneFrameTimer);
+            phoneFrameTimer = null;
+        }
+
+        if (phoneMediaStream) {
+            phoneMediaStream.getTracks().forEach(track => track.stop());
+            phoneMediaStream = null;
+        }
+
+        if (phoneLiveVideo) {
+            phoneLiveVideo.srcObject = null;
+            phoneLiveVideo.classList.add("hidden");
+        }
+
+        if (phoneDetectionCanvas) {
+            const octx = phoneDetectionCanvas.getContext("2d");
+            octx.clearRect(0, 0, phoneDetectionCanvas.width, phoneDetectionCanvas.height);
+            phoneDetectionCanvas.classList.add("hidden");
+        }
+
+        if (videoStream) {
+            videoStream.classList.remove("hidden");
+        }
+
+        if (btnTogglePhoneCam) btnTogglePhoneCam.classList.remove("streaming");
+        if (phoneCamBtnText) phoneCamBtnText.textContent = "Start Phone Camera";
+        if (phoneCamIndicator) {
+            phoneCamIndicator.textContent = "● Idle (Ready)";
+            phoneCamIndicator.classList.remove("streaming");
+        }
+        if (phoneCamFps) phoneCamFps.textContent = "0 FPS";
+        isUploadingFrame = false;
+    }
+
+    if (btnTogglePhoneCam) {
+        btnTogglePhoneCam.addEventListener("click", () => {
+            if (phoneStreamActive) {
+                stopPhoneCamera();
+                showToast("Phone Camera stream paused");
+            } else {
+                startPhoneCamera();
+            }
+        });
+    }
+
+    if (btnFlipPhoneCam) {
+        btnFlipPhoneCam.addEventListener("click", async () => {
+            phoneFacingMode = (phoneFacingMode === "environment") ? "user" : "environment";
+            const camLabel = phoneFacingMode === "environment" ? "Back (Environment)" : "Front (Selfie)";
+            showToast(`Switching to ${camLabel} camera...`, "info");
+            if (phoneStreamActive) {
+                stopPhoneCamera();
+                await startPhoneCamera();
+            }
         });
     }
 
@@ -1167,6 +1405,20 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     initApp();
+
+    // Auto-adjust map sizing on mobile resize & orientation change
+    window.addEventListener("resize", () => {
+        if (typeof map !== "undefined" && map) {
+            map.invalidateSize();
+        }
+    });
+    window.addEventListener("orientationchange", () => {
+        setTimeout(() => {
+            if (typeof map !== "undefined" && map) {
+                map.invalidateSize();
+            }
+        }, 300);
+    });
 
     // Start Polling Stats Loop
     setInterval(pollStats, 600);

@@ -6,10 +6,12 @@ import random
 import shutil
 from typing import Dict, Any, Optional, Tuple
 
+import cv2
+import numpy as np
 import requests
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -105,6 +107,7 @@ class ConfigRequest(BaseModel):
     camera_index: Optional[int] = None
     camera_url: Optional[str] = None
     video_file_path: Optional[str] = None
+    max_box_area_ratio: Optional[float] = None
     suppress_void_fp: Optional[bool] = None
     suppress_static_fp: Optional[bool] = None
     static_seconds: Optional[float] = None
@@ -150,6 +153,7 @@ def get_config():
         "weights_path": vision_engine.weights_path,
         "conf_threshold": vision_engine.conf_threshold,
         "suppress_human_fp": vision_engine.suppress_human_fp,
+        "max_box_area_ratio": vision_engine.max_box_area_ratio,
         "suppress_void_fp": vision_engine.suppress_void_fp,
         "suppress_static_fp": vision_engine.suppress_static_fp,
         "static_seconds": vision_engine.static_tracker.static_seconds,
@@ -176,11 +180,55 @@ def update_config(req: ConfigRequest):
         camera_index=req.camera_index,
         camera_url=req.camera_url,
         video_file_path=req.video_file_path,
+        max_box_area_ratio=req.max_box_area_ratio,
         suppress_void_fp=req.suppress_void_fp,
         suppress_static_fp=req.suppress_static_fp,
         static_seconds=req.static_seconds,
     )
     return {"status": "updated", "config": get_config()}
+
+
+def calculate_exposure_risk_score(rodent_count: int, water_level: float = 85.0, rainfall: float = 1.6) -> int:
+    rodent_index = min(100, rodent_count * 35)
+    water_level_index = water_level * 0.85
+    rainfall_index = min(100, rainfall * 2.0)
+    score = (
+        rodent_index * 0.45
+        + water_level_index * 0.30
+        + rainfall_index * 0.15
+        + 40.0 * 0.10
+    )
+    if rodent_count > 0 and rainfall >= 25 and water_level >= 70:
+        score = min(100, score + 5)
+    return int(round(min(100, max(0, score))))
+
+
+@app.post("/api/upload_frame")
+async def upload_frame(request: Request):
+    """Receives live camera frame binary JPEG from phone browser, runs YOLO, and returns detections."""
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Empty frame payload")
+    
+    nparr = np.frombuffer(body, np.uint8)
+    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if frame is not None:
+        if vision_engine.source_type != "phone_cam":
+            vision_engine.source_type = "phone_cam"
+        
+        detections, count, water_info = vision_engine.process_frame(frame)
+        water_pct = float(water_info.get("water_level_pct", 85.0))
+        return {
+            "status": "ok",
+            "rodents_detected": count,
+            "water_level_pct": water_pct,
+            "water_line_y": water_info.get("water_line_y", 240),
+            "water_trend": water_info.get("trend", "STABLE"),
+            "risk_score": calculate_exposure_risk_score(count, water_pct, 1.6),
+            "detections": detections,
+            "fps": vision_engine.stats.fps
+        }
+    return {"status": "error", "message": "Failed to decode frame"}
 
 
 @app.post("/api/upload_video")
@@ -910,5 +958,3 @@ def read_login():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False)
-
-

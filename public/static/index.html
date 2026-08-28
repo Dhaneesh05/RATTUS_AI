@@ -11,7 +11,7 @@
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <link rel="stylesheet" href="/static/style.css?v=20260812_v2">
+    <link rel="stylesheet" href="/static/style.css?v=20260829_mobile_v1">
 </head>
 <body>
     <!-- SVG Gradient Definitions -->
@@ -231,6 +231,10 @@
                     <div class="video-hud-screen" id="videoHudScreen">
                         <img id="videoStream" src="/api/stream" alt="Live Camera YOLO Stream" crossorigin="anonymous">
                         
+                        <!-- Direct Phone Camera Hardware Video Preview & Detection Overlay -->
+                        <video id="phoneLiveVideo" playsinline autoplay muted class="hidden" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:2; border-radius:6px; background:#000;"></video>
+                        <canvas id="phoneDetectionCanvas" class="hidden" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:3; pointer-events:none;"></canvas>
+
                         <!-- Offline Reticle Viewfinder (shown when camera power is OFF) -->
                         <div class="camera-offline-hud" id="cameraOfflineHud">
                             <div class="hud-reticle">
@@ -243,7 +247,7 @@
                         </div>
 
                         <!-- Top-Left & Bottom HUD Elements -->
-                        <div class="hud-fps-tag" id="fpsCounter">FPS: 0.2</div>
+                        <div class="hud-fps-tag" id="fpsCounter">FPS: 0.0</div>
                     </div>
                 </div>
 
@@ -457,7 +461,7 @@
                 </div>
                 <div class="segmented-pills-row">
                     <button class="seg-pill active" id="btnSourceWebcam">Webcam</button>
-                    <button class="seg-pill" id="btnSourceIpCam">IP Camera</button>
+                    <button class="seg-pill" id="btnSourcePhoneCam">📱 Phone Camera</button>
                     <button class="seg-pill" id="btnSourceVideoFile">Uploaded Video</button>
                 </div>
 
@@ -471,14 +475,29 @@
                     </select>
                 </div>
 
-                <!-- Sub-Controls: IP Camera -->
-                <div class="deck-sub-control hidden" id="ipCamRow">
-                    <label for="ipCamUrl">Stream URL</label>
-                    <div class="input-action-wrap">
-                        <input type="text" id="ipCamUrl" placeholder="http://192.168.1.50:8080/video" class="input-text-sleek">
-                        <button class="btn-deck-primary" id="btnApplyIpCam">Connect</button>
+                <!-- Sub-Controls: Phone Camera Live Stream -->
+                <div class="deck-sub-control hidden" id="phoneCamRow">
+                    <div class="phone-cam-status-box">
+                        <div class="pcs-header">
+                            <span class="pcs-indicator" id="phoneCamIndicator">● Idle (Ready)</span>
+                            <span class="pcs-fps" id="phoneCamFps">0 FPS</span>
+                        </div>
+                        <p class="pcs-desc">Live stream directly from your phone's camera into Rattus AI YOLO detection.</p>
+                    </div>
+                    <div class="phone-cam-action-buttons">
+                        <button class="btn-deck-primary btn-phone-stream" id="btnTogglePhoneCam">
+                            <span class="btn-cam-icon">📹</span>
+                            <span id="phoneCamBtnText">Start Phone Camera</span>
+                        </button>
+                        <button class="btn-deck-secondary" id="btnFlipPhoneCam" title="Flip Camera (Front/Back)">
+                            🔄 Flip Camera
+                        </button>
                     </div>
                 </div>
+
+                <!-- Hidden video & canvas elements for Phone Web Camera capture -->
+                <video id="phoneVideoSource" playsinline autoplay muted style="display:none;"></video>
+                <canvas id="phoneCaptureCanvas" width="640" height="480" style="display:none;"></canvas>
 
                 <!-- Sub-Controls: Video Upload -->
                 <div class="deck-sub-control hidden" id="videoFileRow">
@@ -809,7 +828,7 @@
     <div id="toastContainer" class="toast-container"></div>
 
     <!-- SCRIPTS -->
-    <script src="/static/app.js?v=20260812_v2"></script>
-    <script src="/static/pdf_report.js?v=20260812_v2"></script>
+    <script src="/static/app.js?v=20260829_mobile_v2"></script>
+    <script src="/static/pdf_report.js?v=20260829_mobile_v2"></script>
 </body>
 </html>
