@@ -111,6 +111,7 @@ class ConfigRequest(BaseModel):
     suppress_void_fp: Optional[bool] = None
     suppress_static_fp: Optional[bool] = None
     static_seconds: Optional[float] = None
+    infer_imgsz: Optional[int] = None
 
 
 def risk_band(score: float) -> str:
@@ -184,6 +185,7 @@ def update_config(req: ConfigRequest):
         suppress_void_fp=req.suppress_void_fp,
         suppress_static_fp=req.suppress_static_fp,
         static_seconds=req.static_seconds,
+        infer_imgsz=req.infer_imgsz,
     )
     return {"status": "updated", "config": get_config()}
 
@@ -955,6 +957,80 @@ def read_login():
     return FileResponse(os.path.join(static_dir, "index.html"), media_type="text/html")
 
 
+def ensure_ssl_certs(cert_file="cert.pem", key_file="key.pem"):
+    """Auto-generates self-signed SSL certificates with Subject Alternative Names (SAN) for local HTTPS access."""
+    if os.path.exists(cert_file) and os.path.exists(key_file):
+        return cert_file, key_file
+    try:
+        import datetime
+        import socket
+        import ipaddress
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        key = rsa.generate_private_key(65537, 2048)
+        
+        hostname = socket.gethostname()
+        local_ips = ["127.0.0.1", "0.0.0.0", "172.20.10.2"]
+        try:
+            detected_ip = socket.gethostbyname(hostname)
+            if detected_ip not in local_ips:
+                local_ips.append(detected_ip)
+        except Exception:
+            pass
+
+        san_list = [x509.DNSName("localhost")]
+        for ip in local_ips:
+            try:
+                san_list.append(x509.IPAddress(ipaddress.ip_address(ip)))
+            except Exception:
+                pass
+
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COMMON_NAME, "RATTUS AI Local Server"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "RATTUS AI"),
+        ])
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(issuer)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(datetime.datetime.utcnow() - datetime.timedelta(days=1))
+            .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
+            .add_extension(x509.SubjectAlternativeName(san_list), critical=False)
+            .sign(key, hashes.SHA256())
+        )
+        with open(key_file, "wb") as f:
+            f.write(key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            ))
+        with open(cert_file, "wb") as f:
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
+        print(f"[SSL] Successfully generated self-signed certificate: {cert_file}")
+        return cert_file, key_file
+    except Exception as e:
+        print(f"[SSL Warning] Failed to generate SSL certs automatically: {e}")
+        return None, None
+
+
 if __name__ == "__main__":
+    import sys
     import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False)
+
+    use_ssl = "--no-ssl" not in sys.argv
+    cert_file, key_file = (None, None)
+    if use_ssl:
+        cert_file, key_file = ensure_ssl_certs()
+
+    if cert_file and key_file and os.path.exists(cert_file) and os.path.exists(key_file):
+        print("[RATTUS AI] Starting HTTPS server on https://0.0.0.0:8000 ...")
+        uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False, ssl_keyfile=key_file, ssl_certfile=cert_file)
+    else:
+        print("[RATTUS AI] Starting HTTP server on http://0.0.0.0:8000 ...")
+        uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False)
+

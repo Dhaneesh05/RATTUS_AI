@@ -255,8 +255,8 @@ class VisionEngine:
 
     @staticmethod
     def _trained_imgsz(model: Any) -> int:
-        """Optimal CPU inference size capped at 384 for fluid 30 FPS playback."""
-        return 384
+        """High-detail inference size (640) for capturing distant and small rodents."""
+        return 640
 
     def load_model(self, weights_path: str) -> bool:
         if not HAS_YOLO or YOLO is None:
@@ -267,9 +267,9 @@ class VisionEngine:
                 print(f"[VisionEngine] Loading YOLO model from {weights_path}...")
                 self.model = YOLO(weights_path)
                 self.weights_path = weights_path
-                self.infer_imgsz = 384
+                self.infer_imgsz = 640
                 self.static_tracker.reset()
-                print(f"[VisionEngine] High-performance CPU inference resolution set to {self.infer_imgsz}")
+                print(f"[VisionEngine] High-detail inference resolution set to {self.infer_imgsz}")
                 return True
             except Exception as e:
                 print(f"[VisionEngine] Error loading model {weights_path}: {e}")
@@ -297,8 +297,11 @@ class VisionEngine:
         suppress_void_fp: Optional[bool] = None,
         suppress_static_fp: Optional[bool] = None,
         static_seconds: Optional[float] = None,
+        infer_imgsz: Optional[int] = None,
     ):
         with self.lock:
+            if infer_imgsz is not None:
+                self.infer_imgsz = max(320, min(1280, int(infer_imgsz)))
             if conf_threshold is not None:
                 self.conf_threshold = max(0.10, min(0.95, float(conf_threshold)))
             if suppress_human_fp is not None:

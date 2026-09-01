@@ -3167,6 +3167,72 @@ button, input, select {
     font-weight: 600;
 }
 
+/* ==========================================================================
+   RESPONSIVE MOBILE & TABLET BREAKPOINTS
+   ========================================================================== */
+@media (max-width: 1024px) {
+    .command-grid-3col {
+        grid-template-columns: 1fr 1fr;
+    }
+    .kpi-top-strip {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    body {
+        padding: 0.5rem;
+    }
+    .command-center-container {
+        gap: 0.75rem;
+    }
+    .header-navbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        padding: 0.75rem 0.85rem;
+    }
+    .header-left, .header-right {
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 0.5rem;
+        width: 100%;
+    }
+    .brand-titles h1 {
+        font-size: 1.1rem;
+    }
+    .brand-subtitle {
+        font-size: 0.65rem;
+    }
+    .nav-pills-deck {
+        width: 100%;
+        overflow-x: auto;
+        white-space: nowrap;
+        justify-content: flex-start;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .kpi-top-strip {
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 0.65rem;
+    }
+    .command-grid-3col {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    .video-hud-screen {
+        height: 220px;
+    }
+    .leaflet-container {
+        height: 280px !important;
+    }
+    .table-container, .table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
+
 
 
 
