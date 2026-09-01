@@ -30,7 +30,9 @@ except Exception as _err:
 
 RODENT_LABEL_HINTS = {"rat", "rats", "rodent", "rodents"}
 
-DEFAULT_RAT_WEIGHTS = os.path.join("runs", "detect", "runs", "rat_yolov8", "weights", "best.pt")
+ENHANCED_RAT_WEIGHTS = os.path.join("runs", "detect", "rat_enhanced_v2", "weights", "best.pt")
+BASE_RAT_WEIGHTS = os.path.join("runs", "detect", "runs", "rat_yolov8", "weights", "best.pt")
+DEFAULT_RAT_WEIGHTS = ENHANCED_RAT_WEIGHTS if os.path.exists(ENHANCED_RAT_WEIGHTS) else BASE_RAT_WEIGHTS
 FALLBACK_COCO_WEIGHTS = "yolov8n.pt"
 
 @dataclass

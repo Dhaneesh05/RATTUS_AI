@@ -31,6 +31,9 @@ Thumbs.db
 # Hard Negatives Mining & Temporary Runs
 hard_negatives/
 runs/detect/rat_yolov8_hn/
+runs/detect/rat_enhanced_v2/
+dataset_user_rats/
 
 # SSL Certificates
 *.pem
+
